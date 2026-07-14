@@ -16,7 +16,8 @@ DSP_Algorithm_Lib/
 │
 ├── 测频/
 │   ├── FFT实现/                      自定义基-2 FFT
-│   └── FFT二次插值测频/              FFT 二次插值频率估计
+│   ├── FFT二次插值测频/              FFT 二次插值频率估计
+│   └── 过零比较测频/                  过零比较频率测量
 │
 ├── 测幅/
 │   ├── 均方根测幅/                   RMS 幅度测量
@@ -37,6 +38,9 @@ DSP_Algorithm_Lib/
 |------|------|------|
 | `FFTNt.c/.h` | `InitTableFFT(n)`, `cfft(ptr, n)` | 自定义基-2 FFT，不依赖 CMSIS-DSP FFT |
 | `Fre.c/.h` | `cfft_f32_fre(fs, AD_Value, flag)` | 基于 FFT 的二次插值频率估计 |
+| `zero_cross.c/.h` | `ZeroCross_Freq(input, n, fs)` | 过零比较频率测量（线性插值） |
+| | `ZeroCross_Period(input, n, fs)` | 过零比较周期测量 |
+| | `ZeroCross_Count(input, n)` | 过零点计数 |
 
 ### 测幅
 
