@@ -1,5 +1,5 @@
 /*
- * ADC Backend — STM32H732
+ * ADC Backend — STM32H743
  *   16-bit ADC (0~65535), VREF = 3.3V
  */
 #include "adc_backend.h"

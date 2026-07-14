@@ -11,7 +11,8 @@ DSP_Algorithm_Lib/
 ├── backend/                          硬件抽象层（ADC）
 │   ├── adc_backend.h                 接口定义
 │   ├── adc_backend_stm32f407.c       STM32F407 后端（12-bit ADC）
-│   └── adc_backend_stm32h732.c       STM32H732 后端（16-bit ADC）
+│   ├── adc_backend_stm32h723.c       STM32H723 后端（16-bit ADC）
+│   └── adc_backend_stm32h743.c       STM32H743 后端（16-bit ADC）
 │
 ├── 测频/
 │   ├── FFT实现/                      自定义基-2 FFT
@@ -71,7 +72,8 @@ DSP_Algorithm_Lib/
 |------|------|------|
 | `adc_backend.h` | `ADC_Backend_RawToVoltage()` | ADC 原始数据转电压（接口） |
 | `adc_backend_stm32f407.c` | | 12-bit ADC, VREF=3.3V |
-| `adc_backend_stm32h732.c` | | 16-bit ADC, VREF=3.3V |
+| `adc_backend_stm32h723.c` | | 16-bit ADC, VREF=3.3V |
+| `adc_backend_stm32h743.c` | | 16-bit ADC, VREF=3.3V |
 
 ## 依赖
 
@@ -84,7 +86,8 @@ DSP_Algorithm_Lib/
 2. 确保工程已链接 CMSIS-DSP 库
 3. 根据目标芯片选择一个 backend `.c` 文件链接：
    - STM32F407 → `adc_backend_stm32f407.c`
-   - STM32H732 → `adc_backend_stm32h732.c`
+   - STM32H723 → `adc_backend_stm32h723.c`
+   - STM32H743 → `adc_backend_stm32h743.c`
 4. 在代码中 `#include "adc_backend.h"` 调用 ADC 接口
 
 ```c
