@@ -28,6 +28,13 @@ add_executable(test_frequency
 )
 target_link_libraries(test_frequency CMSISDSP m)
 
+# ---- Direct FFT-core validation runner ----
+add_executable(test_fft_core
+    test_runner/test_fft_core.c
+    ${ALGO_SRC_DIR}/freq_measure/fft/fft_n.c
+)
+target_link_libraries(test_fft_core CMSISDSP m)
+
 # ---- Amplitude measurement test runner ----
 add_executable(test_amplitude
     test_runner/test_amplitude.c
@@ -58,3 +65,17 @@ add_executable(test_safety
     ${ALGO_SRC_DIR}/phase_measure/fir_filter/fir_filter.c
 )
 target_link_libraries(test_safety CMSISDSP m)
+
+# Apply optimization only to locally owned test executables, never CMSIS-DSP.
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    foreach(test_target
+            test_sanity
+            test_frequency
+            test_fft_core
+            test_amplitude
+            test_phase
+            test_czt
+            test_safety)
+        target_compile_options(${test_target} PRIVATE -O2)
+    endforeach()
+endif()

@@ -19,6 +19,7 @@ DEFAULT_SEED = 20260717
 
 MODULES = {
     'frequency': {'target': 'test_frequency', 'samples': 8192, 'freq': 1000.0},
+    'fft_core': {'target': 'test_fft_core', 'samples': 8192, 'freq': 1000.0},
     'amplitude': {'target': 'test_amplitude', 'samples': 4096, 'freq': 1000.0},
     'phase': {'target': 'test_phase', 'samples': 1024, 'freq': 50.0},
     'czt': {'target': 'test_czt', 'samples': 2048, 'freq': 1000.3},
@@ -117,6 +118,13 @@ def suite_cases(module, suite, seed=DEFAULT_SEED):
             _case('quantized_non_integer', freq=1234.5, samples=8192, adc_bits=12),
         ]
         return _seed_cases(full if suite == 'full' else full[1:2], seed)
+    if module == 'fft_core':
+        full = [
+            _case('integer_bin', freq=1000.0, samples=8192),
+            _case('second_integer_bin', freq=1250.0, amplitude=0.7,
+                  samples=8192),
+        ]
+        return _seed_cases(full if suite == 'full' else full[:1], seed)
     if module == 'amplitude':
         full = [
             _case('sine_1v', waveform='sine', freq=1000.0, samples=4096, adc_bits=12),
@@ -151,7 +159,7 @@ def suite_cases(module, suite, seed=DEFAULT_SEED):
 
 def custom_case(module, args):
     config = MODULES[module]
-    waveform = 'sine' if module in ('frequency', 'phase', 'czt', 'safety') else args.waveform
+    waveform = 'sine' if module in ('frequency', 'fft_core', 'phase', 'czt', 'safety') else args.waveform
     adc_bits = args.adc_bits
     if module in ('frequency', 'amplitude') and adc_bits == 0:
         adc_bits = 12
@@ -203,6 +211,18 @@ def expected_checks(module, case):
             'czt_amp': (case['amplitude'], {'kind': 'relative', 'tolerance': 0.005,
                                             'description': 'relative error <= 0.5%'}),
         }
+    if module == 'fft_core':
+        fft_bin = case['fs'] / case['samples']
+        return {
+            'fft_core_freq': (freq, {
+                'kind': 'absolute', 'tolerance': fft_bin / 2.0,
+                'description': 'absolute error <= half FFT bin',
+            }),
+            'fft_core_magnitude': (case['amplitude'] * case['samples'] / 2.0, {
+                'kind': 'relative', 'tolerance': 0.005,
+                'description': 'relative error <= 0.5%',
+            }),
+        }
     if module == 'safety':
         return {
             'iq_invalid_length_unchanged': (
@@ -250,6 +270,8 @@ def run_executable(build_dir, target):
         if line.startswith('RESULT:'):
             _, label, value = line.split(':', 2)
             measured[label.strip()] = float(value.strip())
+        elif line.startswith('BENCH:'):
+            print(line)
     return measured
 
 
@@ -284,7 +306,7 @@ def run_case(module, case, cmake, build_dir):
 def parse_args():
     parser = argparse.ArgumentParser(description='DSP Algorithm Test Orchestrator')
     parser.add_argument('--module', default='all',
-                        choices=['frequency', 'amplitude', 'phase', 'czt', 'safety', 'all'])
+                        choices=['frequency', 'fft_core', 'amplitude', 'phase', 'czt', 'safety', 'all'])
     parser.add_argument('--suite', default='smoke', choices=['smoke', 'full', 'custom'])
     parser.add_argument('--waveform', default='sine', choices=['sine', 'square', 'triangle'])
     parser.add_argument('--freq', type=float, default=None)

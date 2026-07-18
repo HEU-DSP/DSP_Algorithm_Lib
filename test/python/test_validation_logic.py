@@ -66,6 +66,41 @@ class ValidationLogicTests(unittest.TestCase):
         self.assertEqual(result['status'], 'PASS')
         self.assertAlmostEqual(result['abs_error'], math.radians(0.2), places=7)
 
+    def test_fft_core_has_non_quantized_cases_and_analytical_checks(self):
+        self.assertEqual(
+            run_test.MODULES['fft_core'],
+            {'target': 'test_fft_core', 'samples': 8192, 'freq': 1000.0},
+        )
+        cases = run_test.suite_cases('fft_core', 'full')
+        self.assertTrue(cases)
+        for case in cases:
+            self.assertEqual(case['waveform'], 'sine')
+            self.assertEqual(case['adc_bits'], 0)
+            checks = run_test.expected_checks('fft_core', case)
+            self.assertEqual(checks['fft_core_freq'][0], case['freq'])
+            self.assertAlmostEqual(
+                checks['fft_core_freq'][1]['tolerance'],
+                case['fs'] / case['samples'] / 2.0,
+            )
+            self.assertAlmostEqual(
+                checks['fft_core_magnitude'][0],
+                case['amplitude'] * case['samples'] / 2.0,
+            )
+            self.assertEqual(checks['fft_core_magnitude'][1]['tolerance'], 0.005)
+
+    def test_runner_forwards_benchmark_records(self):
+        completed = mock.Mock(
+            returncode=0,
+            stdout='RESULT:fft_core_freq:1000.0\nBENCH:fft_core:20:12.5\n',
+            stderr='',
+        )
+        with mock.patch('run_test.subprocess.run', return_value=completed), \
+             mock.patch('builtins.print') as print_mock:
+            measured = run_test.run_executable('build-dir', 'test_fft_core')
+
+        self.assertEqual(measured['fft_core_freq'], 1000.0)
+        print_mock.assert_any_call('BENCH:fft_core:20:12.5')
+
 
 class ReportCompatibilityTests(unittest.TestCase):
     def test_report_accepts_metadata_results_payload(self):
