@@ -56,8 +56,17 @@ int main(void)
 {
     float32_t fir_max_abs = 0.0f;
     const int invalid_length_unchanged = run_safety_workload(&fir_max_abs);
+    float32_t nyquist_input[SAMPLE_N];
+    for (int i = 0; i < SAMPLE_N; ++i) {
+        nyquist_input[i] = (i & 1) == 0 ? 0.25f : -0.25f;
+    }
+    const float32_t nyquist_phase = CalPhase(
+        25600.0f, 51200.0f, SAMPLE_N, nyquist_input);
+    const int nyquist_rejected = nyquist_phase == 0.0f;
+
     printf("RESULT:iq_invalid_length_unchanged:%d\n",
            invalid_length_unchanged);
+    printf("RESULT:iq_nyquist_rejected:%d\n", nyquist_rejected);
     printf("RESULT:fir_zero_max_abs:%.9f\n", fir_max_abs);
 
     volatile float32_t benchmark_sink = 0.0f;

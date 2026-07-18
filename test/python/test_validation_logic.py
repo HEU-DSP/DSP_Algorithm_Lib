@@ -227,6 +227,14 @@ class ValidationLogicTests(unittest.TestCase):
             16,
         )
 
+    def test_safety_requires_nyquist_phase_rejection(self):
+        checks = run_test.expected_checks(
+            'safety', run_test.suite_cases('safety', 'full')[0],
+        )
+        self.assertIn('iq_nyquist_rejected', checks)
+        self.assertEqual(checks['iq_nyquist_rejected'][0], 1.0)
+        self.assertEqual(checks['iq_nyquist_rejected'][1]['tolerance'], 0.0)
+
     def test_readmes_declare_breaking_include_migration_and_sanity_scope(self):
         with open(os.path.join(run_test.PROJECT_ROOT, 'README.md'),
                   encoding='utf-8') as stream:

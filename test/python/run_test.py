@@ -320,6 +320,9 @@ def expected_checks(module, case):
             'iq_invalid_length_unchanged': (
                 1.0, {'kind': 'absolute', 'tolerance': 0.0,
                       'description': 'invalid length leaves output unchanged'}),
+            'iq_nyquist_rejected': (
+                1.0, {'kind': 'absolute', 'tolerance': 0.0,
+                      'description': 'Nyquist phase input is rejected'}),
             'fir_zero_max_abs': (
                 0.0, {'kind': 'absolute', 'tolerance': 1.0e-6,
                       'description': 'zero-input FIR output <= 1e-6'}),

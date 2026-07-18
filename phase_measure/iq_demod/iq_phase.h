@@ -24,7 +24,7 @@ void CalXiebo(float32_t *input, float32_t *output, int n);
 
 /**
  * @brief Estimate sine-wave phase with a DC-aware least-squares fit.
- * @param[in] f Signal frequency in hertz.
+ * @param[in] f Signal frequency in hertz; must satisfy 0 < f < fs/2.
  * @param[in] fs Sampling frequency in hertz.
  * @param[in] N Number of input samples; must not exceed SAMPLE_N.
  * @param[in] adc_float Sample buffer.

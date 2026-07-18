@@ -36,6 +36,8 @@ void CalXiebo(float32_t *input, float32_t *output, int n)
 
 float CalPhase(float f, float fs, int N, float32_t *adc_float)
 {
+    static const double k_pi =
+        3.14159265358979323846264338327950288;
     double sum_y = 0.0;
     double sum_c = 0.0;
     double sum_s = 0.0;
@@ -46,12 +48,12 @@ float CalPhase(float f, float fs, int N, float32_t *adc_float)
     double sum_ys = 0.0;
 
     if (adc_float == NULL || f <= 0.0f || fs <= 0.0f || N <= 0 ||
-        N > SAMPLE_N || f >= fs) {
+        N > SAMPLE_N || f >= 0.5f * fs) {
         return 0.0f;
     }
 
     for (int i = 0; i < N; ++i) {
-        const double angle = 2.0 * (double)PI * (double)f * (double)i /
+        const double angle = 2.0 * k_pi * (double)f * (double)i /
                              (double)fs;
         const double cosine = cos(angle);
         const double sine = sin(angle);
@@ -73,12 +75,17 @@ float CalPhase(float f, float fs, int N, float32_t *adc_float)
     const double centered_cs = sum_cs - sum_c * sum_s / sample_count;
     const double centered_yc = sum_yc - sum_y * sum_c / sample_count;
     const double centered_ys = sum_ys - sum_y * sum_s / sample_count;
+    const double trace = centered_cc + centered_ss;
+    const double discriminant = hypot(centered_cc - centered_ss,
+                                      2.0 * centered_cs);
+    const double lambda_max = 0.5 * (trace + discriminant);
+    const double lambda_min = 0.5 * (trace - discriminant);
     const double determinant = centered_cc * centered_ss -
                                centered_cs * centered_cs;
-    const double determinant_scale = fmax(centered_cc * centered_ss, 1.0);
 
-    if (!isfinite(determinant) ||
-        fabs(determinant) <= 1.0e-12 * determinant_scale) {
+    if (!isfinite(lambda_max) || !isfinite(lambda_min) ||
+        lambda_max <= 0.0 || lambda_min <= 1.0e-12 * lambda_max ||
+        !isfinite(determinant)) {
         return 0.0f;
     }
 
