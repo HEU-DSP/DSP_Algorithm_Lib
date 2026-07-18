@@ -116,7 +116,7 @@ class ValidationLogicTests(unittest.TestCase):
             self.assertEqual(validation['kind'], 'relative')
             self.assertEqual(validation['tolerance'], 0.005)
 
-    def test_runner_forwards_benchmark_records(self):
+    def test_runner_returns_validated_structured_benchmark_records(self):
         completed = mock.Mock(
             returncode=0,
             stdout='RESULT:fft_core_freq:1000.0\nBENCH:fft_core:20:12.5\n',
@@ -124,10 +124,70 @@ class ValidationLogicTests(unittest.TestCase):
         )
         with mock.patch('run_test.subprocess.run', return_value=completed), \
              mock.patch('builtins.print') as print_mock:
-            measured = run_test.run_executable('build-dir', 'test_fft_core')
+            measured, benchmarks = run_test.run_executable('build-dir', 'test_fft_core')
 
         self.assertEqual(measured['fft_core_freq'], 1000.0)
+        self.assertEqual(
+            benchmarks,
+            [{'algorithm': 'fft_core', 'iterations': 20, 'average_us': 12.5}],
+        )
+        self.assertEqual(measured['fft_core_iterations'], 20)
+        self.assertEqual(measured['fft_core_avg_us'], 12.5)
         print_mock.assert_any_call('BENCH:fft_core:20:12.5')
+
+    def test_runner_rejects_malformed_benchmark_records(self):
+        completed = mock.Mock(
+            returncode=0,
+            stdout='RESULT:fft_core_freq:1000.0\nBENCH:fft_core:0:12.5\n',
+            stderr='',
+        )
+        with mock.patch('run_test.subprocess.run', return_value=completed):
+            with self.assertRaises(ValueError):
+                run_test.run_executable('build-dir', 'test_fft_core')
+
+    def test_resource_baseline_case_selection(self):
+        self.assertTrue(run_test.is_resource_baseline('frequency', 'integer_bin', 'full'))
+        self.assertFalse(run_test.is_resource_baseline('frequency', 'with_noise', 'full'))
+        self.assertTrue(run_test.is_resource_baseline('phase', 'custom', 'custom'))
+        self.assertTrue(
+            run_test.is_resource_baseline('frequency', 'non_integer_bin', 'smoke')
+        )
+
+    def test_resource_records_attach_target_sizes_to_each_benchmark(self):
+        records = run_test.make_resource_records(
+            'test_phase',
+            {'samples': 1024},
+            [
+                {'algorithm': 'iq_phase', 'iterations': 30, 'average_us': 1.5},
+                {'algorithm': 'xiebo_fundamental', 'iterations': 30, 'average_us': 3.0},
+            ],
+            {
+                'executable_bytes': 1000,
+                'text_bytes': 100,
+                'data_bytes': 20,
+                'bss_bytes': 30,
+            },
+        )
+        self.assertEqual(len(records), 2)
+        self.assertEqual(
+            records[0],
+            {
+                'target': 'test_phase', 'algorithm': 'iq_phase', 'samples': 1024,
+                'iterations': 30, 'average_us': 1.5, 'executable_bytes': 1000,
+                'text_bytes': 100, 'data_bytes': 20, 'bss_bytes': 30,
+            },
+        )
+
+    def test_phase_runner_emits_required_benchmark_contracts(self):
+        source_path = os.path.join(
+            run_test.PROJECT_ROOT, 'test', 'test_runner', 'test_phase.c',
+        )
+        with open(source_path, encoding='utf-8', errors='replace') as stream:
+            source = stream.read()
+        self.assertIn('#include "benchmark.h"', source)
+        self.assertIn('BENCH:iq_phase:', source)
+        self.assertIn('BENCH:xiebo_fundamental:', source)
+        self.assertIn('volatile float32_t benchmark_sink', source)
 
     def test_fir_contract_generates_numpy_convolution_reference(self):
         self.assertEqual(

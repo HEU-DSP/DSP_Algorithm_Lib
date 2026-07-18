@@ -11,6 +11,7 @@ import sys
 
 import numpy as np
 
+from resource_metrics import collect_resource_metrics, parse_benchmark_line
 from signal_generator import FIR_COEFFICIENTS, generate_signal, write_signal_header
 
 
@@ -28,6 +29,14 @@ MODULES = {
     'czt': {'target': 'test_czt', 'samples': 2048, 'freq': 1000.3},
     'fir': {'target': 'test_fir_response', 'samples': 1024, 'freq': 1000.0},
     'safety': {'target': 'test_safety', 'samples': 1024, 'freq': 50.0},
+}
+
+RESOURCE_BASELINE_CASES = {
+    'frequency': 'integer_bin',
+    'fft_core': 'integer_bin',
+    'mag_phase': 'sine_1v',
+    'phase': 'phase_+0deg',
+    'fir': 'fir_convolution',
 }
 
 
@@ -303,19 +312,52 @@ def run_executable(build_dir, target):
     if completed.returncode:
         raise RuntimeError(f'{target} exited with {completed.returncode}:\n{completed.stderr}')
     measured = {}
+    benchmarks = []
     for line in completed.stdout.splitlines():
         if line.startswith('RESULT:'):
             _, label, value = line.split(':', 2)
             measured[label.strip()] = float(value.strip())
         elif line.startswith('BENCH:'):
-            _, label, iterations, avg_us = line.split(':', 3)
-            measured[f'{label.strip()}_iterations'] = float(iterations.strip())
-            measured[f'{label.strip()}_avg_us'] = float(avg_us.strip())
+            benchmark = parse_benchmark_line(line)
+            benchmarks.append(benchmark)
+            measured[f'{benchmark["algorithm"]}_iterations'] = benchmark['iterations']
+            measured[f'{benchmark["algorithm"]}_avg_us'] = benchmark['average_us']
             print(line)
-    return measured
+    return measured, benchmarks
 
 
-def run_case(module, case, cmake, build_dir):
+def is_resource_baseline(module, case_id, suite):
+    if suite == 'custom':
+        return True
+    baseline_case = RESOURCE_BASELINE_CASES.get(module)
+    if baseline_case is None:
+        return False
+    if case_id == baseline_case:
+        return True
+    return all(
+        case['case_id'] != baseline_case
+        for case in suite_cases(module, suite)
+    )
+
+
+def make_resource_records(target, case, benchmarks, sizes):
+    return [
+        {
+            'target': target,
+            'algorithm': benchmark['algorithm'],
+            'samples': case['samples'],
+            'iterations': benchmark['iterations'],
+            'average_us': benchmark['average_us'],
+            'executable_bytes': sizes['executable_bytes'],
+            'text_bytes': sizes['text_bytes'],
+            'data_bytes': sizes['data_bytes'],
+            'bss_bytes': sizes['bss_bytes'],
+        }
+        for benchmark in benchmarks
+    ]
+
+
+def run_case(module, case, cmake, build_dir, suite):
     signal, raw = generate_signal(
         case['waveform'], case['freq'], case['amplitude'], case['phase'],
         case['fs'], case['samples'], case['noise'], case['adc_bits'], 3.3,
@@ -337,7 +379,10 @@ def run_case(module, case, cmake, build_dir):
     )
     target = MODULES[module]['target']
     build_target(cmake, build_dir, target)
-    measured = run_executable(build_dir, target)
+    measured, benchmarks = run_executable(build_dir, target)
+    suffix = '.exe' if os.name == 'nt' else ''
+    executable = os.path.join(build_dir, 'test', target + suffix)
+    sizes = collect_resource_metrics(executable)
 
     results = []
     for label, (expected, check) in expected_checks(module, case).items():
@@ -347,7 +392,11 @@ def run_case(module, case, cmake, build_dir):
         results.append(result)
         print(f'  [{result["status"]:9s}] {case["case_id"]:24s} {label:22s} '
               f'expected={expected:.6f} actual={result["actual"]}')
-    return results
+    resources = (
+        make_resource_records(target, case, benchmarks, sizes)
+        if is_resource_baseline(module, case['case_id'], suite) else []
+    )
+    return results, resources
 
 
 def parse_args():
@@ -381,13 +430,16 @@ def main():
     modules = list(MODULES) if args.module == 'all' else [args.module]
 
     all_results = []
+    all_resources = []
     for module in modules:
         cases = ([custom_case(module, args)] if args.suite == 'custom'
                  else suite_cases(module, args.suite, args.seed))
         print(f'\n== {module}: {len(cases)} case(s) ==')
         for case in cases:
             try:
-                all_results.extend(run_case(module, case, cmake, build_dir))
+                results, resources = run_case(module, case, cmake, build_dir, args.suite)
+                all_results.extend(results)
+                all_resources.extend(resources)
             except Exception as error:
                 print(f'  [ERROR    ] {case["case_id"]}: {error}')
                 all_results.append(make_error_result(module, case['case_id'], error))
@@ -397,13 +449,36 @@ def main():
     print(f'\nSummary: {counts["PASS"]} PASS, {counts["FAIL"]} FAIL, '
           f'{counts["NO_RESULT"]} NO_RESULT, {counts["ERROR"]} ERROR')
 
+    unique_resources = []
+    resource_keys = set()
+    for resource in all_resources:
+        key = (resource['target'], resource['algorithm'], resource['samples'])
+        if key not in resource_keys:
+            resource_keys.add(key)
+            unique_resources.append(resource)
+
+    compiler = args.c_compiler or shutil.which('gcc')
+    if not compiler:
+        raise FileNotFoundError('GCC compiler not found; pass --c-compiler or add gcc to PATH')
+    compiler_run = subprocess.run([compiler, '--version'], capture_output=True, text=True)
+    if compiler_run.returncode or not compiler_run.stdout.strip():
+        raise RuntimeError(f'Unable to describe compiler: {compiler}')
+
     payload = {
         'metadata': {
             'suite': args.suite, 'seed': args.seed,
             'generated_utc': datetime.now(timezone.utc).isoformat(),
             'cmake': describe_cmake(cmake),
+            'compiler': compiler_run.stdout.splitlines()[0],
+            'optimization': '-O2',
+            'resource_scope': 'PC/GCC reference; not STM32 target usage',
+            'resource_size_scope': (
+                'Executable and GNU .text/.data/.bss sizes are target-level and '
+                'shared when multiple algorithms use one test executable.'
+            ),
         },
         'results': all_results,
+        'resources': unique_resources,
     }
     if args.save_json:
         output = os.path.abspath(args.save_json)
