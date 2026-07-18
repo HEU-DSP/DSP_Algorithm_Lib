@@ -97,7 +97,20 @@ cmake --build build --target test_sanity
 python test/python/run_test.py --module all --suite full
 ```
 
-完整数据集验证和报告生成方式见 [`test/README.md`](test/README.md)。运行时数值验证覆盖 FFT/过零测频、RMS 测幅、I/Q 测相、谐波分析以及 CZT 测频/测幅，并包含 FIR 输出缓冲区和 I/Q 固定长度的安全回归检查。差分三角波测幅、平顶窗测幅、Backend 和 `mag_phase` 当前只完成编译检查；FIR 只验证零输入与输出缓冲区安全，尚未验证完整频率响应；`czt_Phase()` 仅保留兼容接口，不属于已验证结论。
+完整数据集验证和报告生成方式见 [`test/README.md`](test/README.md)。Python/NumPy 生成确定性的数学真值数组，CMake/GCC 编译并运行真实 C 源码。运行时数值验证覆盖自定义 FFT 核心的直接频率/幅值、FFT 插值与过零测频、RMS 测幅、I/Q 多角度/噪声测相、谐波分析、测相配套正弦/方波/三角波幅度及保护/非法输入、CZT 测频/测幅，以及 FIR 的 11 个归一化系数 NumPy 卷积比较和零输入安全回归。差分三角波测幅、平顶窗 FFT 测幅、Backend 硬件转换和 `czt_Phase()` 未在这里数值建立；原始 FIR 设计缺少采样率规格，不能据此主张截止频率或通带性能。
+
+完整验证与报告命令：
+
+```powershell
+python test/python/run_test.py --module frequency --suite full
+python test/python/run_test.py --module phase --suite full
+python test/python/run_test.py --module mag_phase --suite full
+python test/python/run_test.py --module fir --suite full
+python test/python/run_test.py --module all --suite full --save-json test/python/full_results.json
+python test/python/report.py --input test/python/full_results.json --output test/validation_report.md --title "DSP 算法验证报告"
+```
+
+完整运行的 BENCH 加 GNU `size -B` 输出仅为 PC/GCC 主机参考时间与可执行文件、`.text`、`.data`、`.bss` 节区大小；同一测试目标内的算法共享目标映像大小，并非单独函数大小。主机耗时会随机器与负载变化，不能复制为 STM32 性能或资源测量。
 
 ## 仓库组织说明
 

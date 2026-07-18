@@ -1,6 +1,6 @@
 # DSP 算法验证报告
 
-**Generated:** 2026-07-18 12:57:40
+**Generated:** 2026-07-18 20:05:13
 
 ## Run metadata
 
@@ -8,8 +8,12 @@
 |-------|-------|
 | Suite | full |
 | Seed | 20260717 |
-| Generated Utc | 2026-07-18T04:57:29.214666+00:00 |
+| Generated Utc | 2026-07-18T12:05:02.351073+00:00 |
 | Cmake | cmake version 4.4.0 |
+| Compiler | gcc.exe (Rev3, Built by MSYS2 project) 13.2.0 |
+| Optimization | -O2 |
+| Resource Scope | PC/GCC reference; not STM32 target usage |
+| Resource Size Scope | Executable and GNU .text/.data/.bss sizes are target-level and shared when multiple algorithms use one test executable. |
 
 ## 修订结论
 
@@ -25,12 +29,43 @@
 
 | Metric | Value |
 |--------|-------|
-| Total tests | 41 |
-| PASS | 41 |
+| Total tests | 50 |
+| PASS | 50 |
 | FAIL | 0 |
 | NO_RESULT | 0 |
 | ERROR | 0 |
 | Pass rate | 100.0% |
+
+## 资源占用（PC/GCC 参考）
+
+以下 BENCH 和 GNU `size -B` 数值是 PC/GCC 主机参考值，**不是 STM32 目标测量值**。
+同一测试可执行文件中的算法共享目标级可执行文件与节区大小；这些数值不是单个函数的独立大小。
+
+| Target | Algorithm | Samples | Iterations | 平均耗时 (μs) | Executable bytes | .text | .data | .bss |
+|--------|-----------|---------|------------|---------------|------------------|-------|-------|------|
+| test_frequency | fft_interp | 8192 | 20 | 200.000000 | 193544 | 15644 | 52032 | 98752 |
+| test_frequency | fft_peak | 8192 | 20 | 150.000000 | 193544 | 15644 | 52032 | 98752 |
+| test_frequency | zero_cross_freq | 8192 | 5000 | 4.000000 | 193544 | 15644 | 52032 | 98752 |
+| test_frequency | zero_cross_period | 8192 | 5000 | 4.600000 | 193544 | 15644 | 52032 | 98752 |
+| test_fft_core | fft_core | 8192 | 40 | 75.000000 | 174050 | 13572 | 35592 | 98720 |
+| test_mag_phase | mag_phase_sine | 4096 | 1000 | 3.000000 | 165982 | 14224 | 27428 | 16832 |
+| test_mag_phase | mag_phase_square | 4096 | 1000 | 3.000000 | 165982 | 14224 | 27428 | 16832 |
+| test_mag_phase | mag_phase_triangle | 4096 | 1000 | 4.000000 | 165982 | 14224 | 27428 | 16832 |
+| test_phase | iq_phase | 1024 | 100 | 30.000000 | 1014740 | 829680 | 23528 | 16768 |
+| test_phase | xiebo_fundamental | 1024 | 100 | 20.000000 | 1014740 | 829680 | 23528 | 16768 |
+| test_fir_response | fir_filter | 1024 | 200 | 5.000000 | 999817 | 853204 | 7056 | 4576 |
+
+## 测频/测相源码覆盖矩阵
+
+| Scoped source | Build target | Runtime evidence |
+|---------------|--------------|------------------|
+| `freq_measure/fft/fft_n.c` | `test_fft_core` | 直接 FFT 频率、幅值与计时 |
+| `freq_measure/fft_interp_freq/fft_interp_freq.c` | `test_frequency` | 插值频率、峰值频点与计时 |
+| `freq_measure/zero_cross_freq/zero_cross.c` | `test_frequency` | 过零频率、周期与计时 |
+| `phase_measure/iq_demod/iq_phase.c` | `test_phase` | 多角度/噪声 I/Q 相位与计时 |
+| `phase_measure/iq_demod/fft_buffer.c` | `test_phase` | 谐波 FFT 基波与计时 |
+| `phase_measure/iq_demod/mag_phase.c` | `test_mag_phase` | 正弦/方波/三角波幅度、保护与非法输入检查及计时 |
+| `phase_measure/fir_filter/fir_filter.c` | `test_fir_response`、`test_safety` | NumPy 卷积比较、零输入安全与计时 |
 
 ## 测频 (frequency)
 
@@ -53,6 +88,15 @@
 | quantized_non_integer | zero_cross_freq | 1234.500000 | 1234.500366 | +0.000366 | +0.0000% | relative error <= 0.1% | PASS |
 | quantized_non_integer | zero_cross_period | 0.000810 | 0.000810 | +0.000000 | +0.0055% | relative error <= 0.1% | PASS |
 
+## 自定义 FFT 核心 (fft_core)
+
+| Case | Algorithm | Expected | Measured | Abs Error | Rel Error | Tolerance | Status |
+|------|-----------|----------|----------|-----------|-----------|-----------|--------|
+| integer_bin | fft_core_freq | 1000.000000 | 1000.000000 | +0.000000 | +0.0000% | absolute error <= half FFT bin | PASS |
+| integer_bin | fft_core_magnitude | 4096.000000 | 4096.000000 | +0.000000 | +0.0000% | relative error <= 0.5% | PASS |
+| second_integer_bin | fft_core_freq | 1250.000000 | 1250.000000 | +0.000000 | +0.0000% | absolute error <= half FFT bin | PASS |
+| second_integer_bin | fft_core_magnitude | 2867.200000 | 2867.200195 | +0.000195 | +0.0000% | relative error <= 0.5% | PASS |
+
 ## 测幅 (amplitude)
 
 | Case | Algorithm | Expected | Measured | Abs Error | Rel Error | Tolerance | Status |
@@ -60,6 +104,14 @@
 | sine_1v | rms_sine | 1.000000 | 0.999706 | +0.000294 | +0.0294% | relative error <= 0.5% | PASS |
 | square_0p8v | rms_square | 0.800000 | 0.799524 | +0.000476 | +0.0595% | relative error <= 0.5% | PASS |
 | triangle_1p2v | rms_triangle | 1.200000 | 1.200821 | +0.000821 | +0.0684% | relative error <= 0.5% | PASS |
+
+## 测相配套测幅 (mag_phase)
+
+| Case | Algorithm | Expected | Measured | Abs Error | Rel Error | Tolerance | Status |
+|------|-----------|----------|----------|-----------|-----------|-----------|--------|
+| sine_1v | mag_phase_sine | 1.000000 | 0.999705 | +0.000295 | +0.0295% | relative error <= 0.5% | PASS |
+| square_0p8v | mag_phase_square | 0.800000 | 0.799524 | +0.000476 | +0.0595% | relative error <= 0.5% | PASS |
+| triangle_1p2v | mag_phase_triangle | 1.200000 | 1.199802 | +0.000198 | +0.0165% | relative error <= 0.5% | PASS |
 
 ## 测相 (phase)
 
@@ -91,7 +143,14 @@
 | freq_1234p6_amp_1p2 | czt_freq | 1234.600000 | 1234.635010 | +0.035010 | +0.0028% | absolute error <= one CZT scan step | PASS |
 | freq_1234p6_amp_1p2 | czt_amp | 1.200000 | 1.199687 | +0.000313 | +0.0261% | relative error <= 0.5% | PASS |
 
-## safety (safety)
+## FIR 卷积响应 (fir)
+
+| Case | Algorithm | Expected | Measured | Abs Error | Rel Error | Tolerance | Status |
+|------|-----------|----------|----------|-----------|-----------|-----------|--------|
+| fir_convolution | fir_max_abs_error | 0.000000 | 0.000000 | +0.000000 | +0.0000% | absolute error <= 1e-5 | PASS |
+| fir_convolution | fir_filter_avg_us | 0.000000 | 5.000000 | N/A | N/A | benchmark is finite and positive | PASS |
+
+## 安全回归 (safety)
 
 | Case | Algorithm | Expected | Measured | Abs Error | Rel Error | Tolerance | Status |
 |------|-----------|----------|----------|-----------|-----------|-----------|--------|

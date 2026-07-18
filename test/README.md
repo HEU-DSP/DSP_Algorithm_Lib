@@ -1,6 +1,6 @@
 # DSP 算法库仿真与验证指南
 
-本目录用 Python 生成确定性的输入数据，用 CMake 编译并运行真实 C 算法，再将输出与测试参数中注入的真值比较。验证程序不会用另一份同类算法计算“答案”，因此可以发现测相公式方向、幅值归一化等系统性错误。
+本目录用 Python/NumPy 生成确定性的数学真值数组，用 CMake/GCC 编译并运行真实 C 源码，再将输出与测试参数中注入的真值比较。验证程序不会用另一份同类算法计算“答案”，因此可以发现测相公式方向、幅值归一化等系统性错误。
 
 ## 一次性环境准备
 
@@ -37,6 +37,10 @@ python test/python/run_test.py --module all --suite smoke
 提交 PR 前运行完整数据集并生成报告：
 
 ```powershell
+python test/python/run_test.py --module frequency --suite full
+python test/python/run_test.py --module phase --suite full
+python test/python/run_test.py --module mag_phase --suite full
+python test/python/run_test.py --module fir --suite full
 python test/python/run_test.py --module all --suite full --save-json test/python/full_results.json
 python test/python/report.py --input test/python/full_results.json --output test/validation_report.md --title "DSP 算法验证报告"
 ```
@@ -48,6 +52,9 @@ python test/python/run_test.py --module frequency --suite full
 python test/python/run_test.py --module amplitude --suite full
 python test/python/run_test.py --module phase --suite full
 python test/python/run_test.py --module czt --suite full
+python test/python/run_test.py --module fft_core --suite full
+python test/python/run_test.py --module mag_phase --suite full
+python test/python/run_test.py --module fir --suite full
 python test/python/run_test.py --module safety --suite full
 ```
 
@@ -62,12 +69,15 @@ python test/python/run_test.py --module phase --suite custom --freq 50 --phase 0
 ## 完整数据集覆盖范围
 
 - 测频：整数频点、非整数频点、加噪、12 位量化；
+- 自定义 FFT 核心：直接 FFT 频率和幅值；
 - 测幅：正弦波、方波、三角波；
 - 测相：`-170°、-90°、-30°、0°、45°、90°、170°` 和带噪 45°；
 - CZT：两组非整数频率和不同幅值。
-- 安全回归：FIR 1024 点输出缓冲区、I/Q 谐波分析固定长度保护。
+- 测相配套测幅：正弦、方波、三角波幅度，以及保护和非法输入检查；
+- FIR：对给定 11 个归一化系数的 NumPy 卷积输出比较，并覆盖零输入安全；
+- 安全回归：FIR 零输入、I/Q 谐波分析固定长度保护。
 
-差分三角波测幅、平顶窗 FFT 测幅、Backend 和 `mag_phase` 当前只做编译检查。FIR 安全用例使用零输入确认输出缓冲区完整写入，不等同于滤波器频率响应验证。
+差分三角波测幅、平顶窗 FFT 测幅、Backend 硬件转换和 `czt_Phase()` 不在本次数值验证范围内，不能据此声称其数值正确。FIR 卷积仅按提供的 11 个归一化系数验证；原始滤波器设计未给出采样率规格，因此这里不主张截止频率或通带性能。
 
 所有加噪用例默认使用随机种子 `20260717`，可用 `--seed` 修改并在 JSON 元数据中记录。
 
@@ -86,6 +96,10 @@ python test/python/run_test.py --module phase --suite custom --freq 50 --phase 0
 | FIR 零输入 | 1024 点输出最大绝对值不超过 `1e-6` |
 
 CZT 的 `czt_Phase()` 当前只保留接口，没有纳入“已验证”结论，因为现有实现没有保存去啁啾后的复数输出，直接读取卷积缓冲区不能代表最终 CZT 相位。
+
+## PC/GCC 资源参考
+
+完整运行会在 JSON 的 `resources` 中保存 BENCH 平均耗时及 GNU `size -B` 的可执行文件、`.text`、`.data`、`.bss` 大小。它们都是 PC/GCC 主机参考值：主机时间会随机器和负载变化，不能复制为 STM32 性能；同一测试目标中的算法共享同一个目标映像大小，因此同目标的大小行不是单个函数的独立大小。
 
 ## 结果协议
 

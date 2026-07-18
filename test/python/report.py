@@ -7,12 +7,16 @@ import json
 
 def _unpack(payload):
     if isinstance(payload, dict):
-        return payload.get('metadata', {}), payload.get('results', [])
-    return {}, payload
+        return (
+            payload.get('metadata', {}),
+            payload.get('results', []),
+            payload.get('resources', []),
+        )
+    return {}, payload, []
 
 
 def generate_report(payload, title="DSP Algorithm Test Report"):
-    metadata, results = _unpack(payload)
+    metadata, results, resources = _unpack(payload)
     lines = [
         f'# {title}',
         '',
@@ -59,6 +63,9 @@ def generate_report(payload, title="DSP Algorithm Test Report"):
         lines.append(f'| Pass rate | {counts["PASS"] / total * 100:.1f}% |')
     lines.append('')
 
+    _append_resource_section(lines, resources)
+    _append_coverage_section(lines)
+
     groups = {}
     for result in results:
         groups.setdefault(result['module'], []).append(result)
@@ -68,6 +75,10 @@ def generate_report(payload, title="DSP Algorithm Test Report"):
         'amplitude': '测幅',
         'phase': '测相',
         'czt': 'CZT 频谱细化',
+        'fft_core': '自定义 FFT 核心',
+        'mag_phase': '测相配套测幅',
+        'fir': 'FIR 卷积响应',
+        'safety': '安全回归',
     }
     for module, module_results in groups.items():
         lines.extend([
@@ -91,6 +102,60 @@ def generate_report(payload, title="DSP Algorithm Test Report"):
         lines.append('')
 
     return '\n'.join(lines)
+
+
+def _append_resource_section(lines, resources):
+    lines.extend([
+        '## 资源占用（PC/GCC 参考）',
+        '',
+        '以下 BENCH 和 GNU `size -B` 数值是 PC/GCC 主机参考值，**不是 STM32 目标测量值**。',
+        '同一测试可执行文件中的算法共享目标级可执行文件与节区大小；这些数值不是单个函数的独立大小。',
+        '',
+    ])
+    if not resources:
+        lines.extend(['没有资源数据：旧版 JSON payload 未提供 `resources` 行。', ''])
+        return
+
+    lines.extend([
+        '| Target | Algorithm | Samples | Iterations | 平均耗时 (μs) | Executable bytes | .text | .data | .bss |',
+        '|--------|-----------|---------|------------|---------------|------------------|-------|-------|------|',
+    ])
+    for resource in resources:
+        lines.append(
+            f'| {resource.get("target", "N/A")} | '
+            f'{resource.get("algorithm", "N/A")} | '
+            f'{resource.get("samples", "N/A")} | '
+            f'{resource.get("iterations", "N/A")} | '
+            f'{_format_resource_number(resource.get("average_us"))} | '
+            f'{resource.get("executable_bytes", "N/A")} | '
+            f'{resource.get("text_bytes", "N/A")} | '
+            f'{resource.get("data_bytes", "N/A")} | '
+            f'{resource.get("bss_bytes", "N/A")} |'
+        )
+    lines.append('')
+
+
+def _append_coverage_section(lines):
+    lines.extend([
+        '## 测频/测相源码覆盖矩阵',
+        '',
+        '| Scoped source | Build target | Runtime evidence |',
+        '|---------------|--------------|------------------|',
+        '| `freq_measure/fft/fft_n.c` | `test_fft_core` | 直接 FFT 频率、幅值与计时 |',
+        '| `freq_measure/fft_interp_freq/fft_interp_freq.c` | `test_frequency` | 插值频率、峰值频点与计时 |',
+        '| `freq_measure/zero_cross_freq/zero_cross.c` | `test_frequency` | 过零频率、周期与计时 |',
+        '| `phase_measure/iq_demod/iq_phase.c` | `test_phase` | 多角度/噪声 I/Q 相位与计时 |',
+        '| `phase_measure/iq_demod/fft_buffer.c` | `test_phase` | 谐波 FFT 基波与计时 |',
+        '| `phase_measure/iq_demod/mag_phase.c` | `test_mag_phase` | 正弦/方波/三角波幅度、保护与非法输入检查及计时 |',
+        '| `phase_measure/fir_filter/fir_filter.c` | `test_fir_response`、`test_safety` | NumPy 卷积比较、零输入安全与计时 |',
+        '',
+    ])
+
+
+def _format_resource_number(value):
+    if value is None:
+        return 'N/A'
+    return f'{value:.6f}'
 
 
 def _format_number(value, signed=False):

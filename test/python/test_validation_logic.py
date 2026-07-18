@@ -283,6 +283,39 @@ class ValidationLogicTests(unittest.TestCase):
 
 
 class ReportCompatibilityTests(unittest.TestCase):
+    def test_report_renders_pc_gcc_resources_and_coverage_matrix(self):
+        payload = {
+            "metadata": {"suite": "full"},
+            "results": [],
+            "resources": [
+                {
+                    "target": "test_fft_core", "algorithm": "fft_core",
+                    "samples": 8192, "iterations": 40, "average_us": 12.5,
+                    "executable_bytes": 12345, "text_bytes": 1000,
+                    "data_bytes": 24, "bss_bytes": 256,
+                }
+            ],
+        }
+
+        markdown = report.generate_report(payload, "Resource Report")
+
+        self.assertIn("## 资源占用（PC/GCC 参考）", markdown)
+        self.assertIn("平均耗时", markdown)
+        self.assertIn(".text", markdown)
+        self.assertIn(".data", markdown)
+        self.assertIn(".bss", markdown)
+        self.assertIn("不是 STM32 目标测量值", markdown)
+        self.assertIn("## 测频/测相源码覆盖矩阵", markdown)
+        self.assertIn("freq_measure/fft/fft_n.c", markdown)
+        self.assertIn("phase_measure/iq_demod/mag_phase.c", markdown)
+        self.assertIn("phase_measure/fir_filter/fir_filter.c", markdown)
+
+    def test_report_explains_missing_legacy_resource_rows(self):
+        markdown = report.generate_report({"metadata": {}, "results": []})
+
+        self.assertIn("## 资源占用（PC/GCC 参考）", markdown)
+        self.assertIn("没有资源数据", markdown)
+
     def test_report_accepts_metadata_results_payload(self):
         payload = {
             "metadata": {"suite": "smoke", "seed": 20260717},
