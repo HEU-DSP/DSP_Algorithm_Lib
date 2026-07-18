@@ -6,7 +6,7 @@
 #include "mag_phase.h"
 #include "math.h"
 
-// Readable implementation note.
+// RMS-based amplitude helpers for sine, square, and triangle inputs.
 
 float Measuring_Sine_Amplitude(uint16_t length,uint16_t *AD_value)
 {

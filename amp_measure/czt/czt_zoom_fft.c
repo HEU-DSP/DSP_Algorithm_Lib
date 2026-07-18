@@ -16,14 +16,14 @@
 
 
 
-__attribute__((aligned(32))) static float gn_fft[2*P];  // Readable implementation note.
-__attribute__((aligned(32))) static float hn_fft[2*P];  // Readable implementation note.
+__attribute__((aligned(32))) static float gn_fft[2*P];  // CZT-modulated input sequence and FFT workspace.
+__attribute__((aligned(32))) static float hn_fft[2*P];  // Chirp convolution kernel and FFT workspace.
 
 void czt_Init_0(float32_t *input, int FS,
         int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 
- // Readable implementation note.
+ // Form a CZT over the requested angular-frequency interval.
 
 
     arm_cfft_radix2_instance_f32 scfft;
@@ -33,45 +33,45 @@ void czt_Init_0(float32_t *input, int FS,
     const float APhase = wStart;
     const float WPhase = -Deltaw;
 
-    // Readable implementation note.
+    // Modulate and zero-pad the input chirp sequence g[n].
     for(int k = 0; k < P; k++) {
         const int idx = 2 * k;
         if(k < N) {
             const float angle = WPhase * (k * k) * 0.5f - k * APhase;
-            gn_fft[idx] = input[k] * arm_cos_f32(angle);    // Readable implementation note.
-            gn_fft[idx+1] = input[k] * arm_sin_f32(angle);  // Readable implementation note.
+            gn_fft[idx] = input[k] * arm_cos_f32(angle);    // Real part of g[n].
+            gn_fft[idx+1] = input[k] * arm_sin_f32(angle);  // Imaginary part of g[n].
         } else {
             gn_fft[idx] = 0.0f;
             gn_fft[idx+1] = 0.0f;
         }
     }
 
-    // Readable implementation note.
+    // Build the chirp convolution kernel h[n] with zero padding.
     int Count = P - M + 1;
     for(int k = 0; k < P; k++) {
         const int idx = 2 * k;
         if(k < N) {
             const float angle = WPhase * k * k * 0.5f;
-            hn_fft[idx] = arm_cos_f32(angle);    // Readable implementation note.
-            hn_fft[idx+1] = -arm_sin_f32(angle); // Readable implementation note.
+            hn_fft[idx] = arm_cos_f32(angle);    // Real part of h[n].
+            hn_fft[idx+1] = -arm_sin_f32(angle); // Imaginary part of h[n].
         } else if(k <= (N + 2*(P-M-N))) {
             hn_fft[idx] = 0.0f;
             hn_fft[idx+1] = 0.0f;
         } else {
             const int n = P - Count;
             const float angle = WPhase * n * n * 0.5f;
-            hn_fft[idx] = arm_cos_f32(angle);    // Readable implementation note.
-            hn_fft[idx+1] = -arm_sin_f32(angle); // Readable implementation note.
+            hn_fft[idx] = arm_cos_f32(angle);    // Real part of wrapped h[n].
+            hn_fft[idx+1] = -arm_sin_f32(angle); // Imaginary part of wrapped h[n].
             Count++;
         }
     }
 
-    // Readable implementation note.
+    // Transform both sequences for frequency-domain convolution.
     arm_cfft_radix2_init_f32(&scfft, P, 0, 1);
     arm_cfft_radix2_f32(&scfft, gn_fft);
     arm_cfft_radix2_f32(&scfft, hn_fft);
 
-    // Readable implementation note.
+    // Multiply the two complex spectra bin by bin.
     for(int k = 0; k < P; k++) {
         const int idx = 2 * k;
         const float real1 = gn_fft[idx];
@@ -79,16 +79,16 @@ void czt_Init_0(float32_t *input, int FS,
         const float real2 = hn_fft[idx];
         const float imag2 = hn_fft[idx+1];
 
-        // Readable implementation note.
-        gn_fft[idx] = real1 * real2 - imag1 * imag2;   // Readable implementation note.
-        gn_fft[idx+1] = real1 * imag2 + imag1 * real2; // Readable implementation note.
+        // (a + bi)(c + di) = (ac - bd) + (ad + bc)i.
+        gn_fft[idx] = real1 * real2 - imag1 * imag2;   // Real product component.
+        gn_fft[idx+1] = real1 * imag2 + imag1 * real2; // Imaginary product component.
     }
 
-    // Readable implementation note.
+    // Inverse-transform the convolution result.
     arm_cfft_radix2_init_f32(&scfft, P, 1, 1);
     arm_cfft_radix2_f32(&scfft, gn_fft);
 
-    // Readable implementation note.
+    // Export magnitudes of the M CZT samples.
 
     for(int k = 0; k < M; k++) {
         const int idx = 2 * k;
@@ -103,7 +103,7 @@ void czt_Init_0(float32_t *input, int FS,
 /********************************************************************************/
 
 
-/* Readable implementation note. */
+/* Return the frequency corresponding to the largest CZT magnitude. */
 float czt_result_fre(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 	int idx=0;
@@ -126,7 +126,7 @@ float czt_result_fre(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 
 
 
-/* Readable implementation note. */
+/* Return the amplitude estimate at the largest CZT magnitude. */
 float czt_Amp(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 	int idx=0;
@@ -145,7 +145,7 @@ float czt_Amp(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 }
 
 
-/* Readable implementation note. */
+/* Return the complex phase at the largest CZT magnitude. */
 float czt_Phase(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 	int idx=0;

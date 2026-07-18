@@ -18,7 +18,7 @@ uint16_t idx_up[1023], idx_down[1023];
 
 
 
-// Readable implementation note.
+// Sort differential magnitudes in ascending order without recursion.
 void quick_sort_large(float32_t* arr, uint32_t length) {
 
     typedef struct {
@@ -86,7 +86,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 //		idx_down[i]=0;
 //
 //	}
-	// Readable implementation note.
+	// Remove the input DC offset before computing differences.
 	for(i=0;i<Length;i++)
 	{
 		average+=AD_value[i];
@@ -100,7 +100,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 
 		median_differ = 0;
 
-	// Readable implementation note.
+	// Compute adjacent-sample differences and their magnitudes.
 	for(i=0;i<Length-1;i++)
 	{
 		differ_data[i]=AD_value1[i+1]-AD_value1[i];
@@ -116,11 +116,11 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 		}
 	}
 
-	// Readable implementation note.
+	// Sort magnitudes to derive a robust differential threshold.
 	quick_sort_large(abs_differ_data,Length-1);
 
 
-	// Readable implementation note.
+	// Average the upper half of sorted magnitudes.
 	for(t=(Length-1)/2;t<Length-1;t++)
 	{
 		median_differ = median_differ + abs_differ_data[t];
@@ -128,7 +128,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 	median_differ = median_differ/(Length/2);
 
 
-	// Readable implementation note.
+	// Locate candidate extrema in the differential waveform.
 	for ( j = 1; j < Length-2 ; j++)
 	{
         if ((differ_data[j] < median_differ/2 && differ_data[j]>0 )||(differ_data[j]>-median_differ/2 && differ_data[j]<0))
@@ -149,7 +149,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
         }
     }
 
-		// Readable implementation note.
+		// Accumulate amplitude contributions from detected extrema.
 	for(k=0;k<cnt_up;k++)
 	{
 		Amp = Amp + (median_differ- AD_value1[idx_up[k]] - AD_value1[idx_up[k]+1])/2;
