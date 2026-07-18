@@ -34,20 +34,23 @@ MODULES = {
 RESOURCE_BASELINE_CASES = {
     'frequency': 'integer_bin',
     'fft_core': 'integer_bin',
+    'amplitude': 'sine_1v',
     'mag_phase': 'sine_1v',
     'phase': 'phase_+0deg',
+    'czt': 'freq_1000p3_amp_0p7',
     'fir': 'fir_convolution',
+    'safety': 'fixed_size_wrappers',
 }
 
 RESOURCE_BENCHMARK_ALGORITHMS = {
     'frequency': {'fft_interp', 'fft_peak', 'zero_cross_freq', 'zero_cross_period'},
     'fft_core': {'fft_core'},
-    'amplitude': set(),
+    'amplitude': {'rms_sine', 'rms_square', 'rms_triangle'},
     'mag_phase': {'mag_phase_sine', 'mag_phase_square', 'mag_phase_triangle'},
     'phase': {'iq_phase', 'xiebo_fundamental'},
-    'czt': set(),
+    'czt': {'czt_zoom'},
     'fir': {'fir_filter'},
-    'safety': set(),
+    'safety': {'safety_wrappers'},
 }
 
 
@@ -153,10 +156,11 @@ def evaluate_check(module, case_id, label, expected, actual, check):
 
 
 def _case(case_id, waveform='sine', freq=1000.0, amplitude=1.0, phase=0.0,
-          samples=8192, fs=51200.0, noise=0.0, adc_bits=0, seed=DEFAULT_SEED):
+          samples=8192, fs=51200.0, noise=0.0, adc_bits=0, seed=DEFAULT_SEED,
+          phase_only=False):
     return dict(case_id=case_id, waveform=waveform, freq=freq, amplitude=amplitude,
                 phase=phase, samples=samples, fs=fs, noise=noise,
-                adc_bits=adc_bits, seed=seed)
+                adc_bits=adc_bits, seed=seed, phase_only=phase_only)
 
 
 def _seed_cases(cases, seed):
@@ -206,6 +210,13 @@ def suite_cases(module, suite, seed=DEFAULT_SEED):
         ]
         full.append(_case('phase_45deg_noise', freq=50.0, phase=math.pi / 4,
                           samples=1024, noise=0.01))
+        full.extend([
+            _case('phase_noncoherent_+80deg', freq=712.20777,
+                  phase=math.radians(80.0), samples=1024, phase_only=True),
+            _case('phase_noncoherent_-120deg_noise', freq=137.4,
+                  phase=math.radians(-120.0), samples=1024, noise=0.01,
+                  phase_only=True),
+        ])
         return _seed_cases(full if suite == 'full' else [full[3], full[4]], seed)
     if module == 'czt':
         full = [
@@ -218,7 +229,10 @@ def suite_cases(module, suite, seed=DEFAULT_SEED):
     if module == 'safety':
         return _seed_cases([_case('fixed_size_wrappers', samples=1024)], seed)
     if module == 'fir':
-        return _seed_cases([_case('fir_convolution', samples=1024)], seed)
+        return _seed_cases([
+            _case('fir_convolution', samples=1024),
+            _case('fir_impulse', waveform='impulse', samples=1024),
+        ], seed)
     raise ValueError(f'Unknown module: {module}')
 
 
@@ -266,15 +280,19 @@ def expected_checks(module, case):
             case['amplitude'], {'kind': 'relative', 'tolerance': 0.005,
                                 'description': 'relative error <= 0.5%'})}
     if module == 'phase':
-        return {
+        checks = {
             'iq_phase': (case['phase'], {'kind': 'phase',
                                          'tolerance': math.radians(0.5),
                                          'description': 'circular error <= 0.5 degree'}),
-            'xiebo_fundamental': (
-                case['amplitude'] * case['samples'] / 2.0,
-                {'kind': 'relative', 'tolerance': 0.005,
-                 'description': 'relative error <= 0.5%'}),
         }
+        if case.get('phase_only'):
+            return checks
+        checks['xiebo_fundamental'] = (
+            case['amplitude'] * case['samples'] / 2.0,
+            {'kind': 'relative', 'tolerance': 0.005,
+             'description': 'relative error <= 0.5%'},
+        )
+        return checks
     if module == 'czt':
         start = max(int(freq) - 100, 0)
         end = int(freq) + 100
@@ -409,11 +427,16 @@ def make_resource_records(target, case, benchmarks, sizes):
 
 
 def run_case(module, case, cmake, build_dir, suite):
-    signal, raw = generate_signal(
-        case['waveform'], case['freq'], case['amplitude'], case['phase'],
-        case['fs'], case['samples'], case['noise'], case['adc_bits'], 3.3,
-        case['seed'],
-    )
+    if case['waveform'] == 'impulse':
+        signal = np.zeros(case['samples'], dtype=np.float32)
+        signal[0] = 1.0
+        raw = None
+    else:
+        signal, raw = generate_signal(
+            case['waveform'], case['freq'], case['amplitude'], case['phase'],
+            case['fs'], case['samples'], case['noise'], case['adc_bits'], 3.3,
+            case['seed'],
+        )
     metadata = {
         'waveform': case['waveform'], 'freq': case['freq'],
         'amplitude': case['amplitude'], 'phase': case['phase'],

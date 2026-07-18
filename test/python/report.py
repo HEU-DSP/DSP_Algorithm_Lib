@@ -110,6 +110,7 @@ def _append_resource_section(lines, resources):
         '',
         '以下 BENCH 和 GNU `size -B` 数值是 PC/GCC 主机参考值，**不是 STM32 目标测量值**。',
         '同一测试可执行文件中的算法共享目标级可执行文件与节区大小；这些数值不是单个函数的独立大小。',
+        '`test_sanity` 仅检查配置、编译与链接环境，不属于算法运行时资源目标。',
         '',
     ])
     if not resources:

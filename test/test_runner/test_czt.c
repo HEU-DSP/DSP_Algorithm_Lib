@@ -12,11 +12,15 @@
  */
 #include <stdio.h>
 #include <stdint.h>
+#include <math.h>
+#include <time.h>
 #include "arm_math.h"
+#include "benchmark.h"
 #include "signal_data.h"
 #include "czt_zoom_fft.h"
 
 #define CZT_M    2048
+#define CZT_BENCHMARK_ITERATIONS 10U
 
 #if SIGNAL_LENGTH != CZT_M
 #error "test_czt requires SIGNAL_LENGTH == 2048"
@@ -45,6 +49,31 @@ int main(void)
     /* ---- 4. CZT phase estimation ---- */
     float czt_p = czt_Phase((int)SIGNAL_FS, f_start, f_end, zoom_abs);
     printf("RESULT:czt_phase:%.6f\n", czt_p);
+
+    volatile float benchmark_sink = 0.0f;
+    czt_Init_0(test_signal_float, (int)SIGNAL_FS, f_start, f_end, zoom_abs);
+    benchmark_sink += czt_result_fre((int)SIGNAL_FS, f_start, f_end, zoom_abs);
+    benchmark_sink += czt_Amp((int)SIGNAL_FS, f_start, f_end, zoom_abs);
+
+    const clock_t begin = clock();
+    for (unsigned int iteration = 0U;
+         iteration < CZT_BENCHMARK_ITERATIONS; ++iteration) {
+        czt_Init_0(test_signal_float, (int)SIGNAL_FS, f_start, f_end, zoom_abs);
+        benchmark_sink += czt_result_fre(
+            (int)SIGNAL_FS, f_start, f_end, zoom_abs);
+        benchmark_sink += czt_Amp(
+            (int)SIGNAL_FS, f_start, f_end, zoom_abs);
+    }
+    const clock_t end = clock();
+    const double average_us = benchmark_average_us(
+        begin, end, CZT_BENCHMARK_ITERATIONS);
+    printf("BENCH:czt_zoom:%u:%.6f\n", CZT_BENCHMARK_ITERATIONS,
+           average_us);
+
+    if (!isfinite(average_us) || average_us <= 0.0 ||
+        !isfinite(benchmark_sink)) {
+        return 2;
+    }
 
     return 0;
 }

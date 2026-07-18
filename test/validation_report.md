@@ -1,6 +1,6 @@
 # DSP 算法验证报告
 
-**Generated:** 2026-07-18 20:05:13
+**Generated:** 2026-07-19 06:44:26
 
 ## Run metadata
 
@@ -8,7 +8,7 @@
 |-------|-------|
 | Suite | full |
 | Seed | 20260717 |
-| Generated Utc | 2026-07-18T12:05:02.351073+00:00 |
+| Generated Utc | 2026-07-18T22:44:25.205472+00:00 |
 | Cmake | cmake version 4.4.0 |
 | Compiler | gcc.exe (Rev3, Built by MSYS2 project) 13.2.0 |
 | Optimization | -O2 |
@@ -29,8 +29,8 @@
 
 | Metric | Value |
 |--------|-------|
-| Total tests | 50 |
-| PASS | 50 |
+| Total tests | 54 |
+| PASS | 54 |
 | FAIL | 0 |
 | NO_RESULT | 0 |
 | ERROR | 0 |
@@ -40,20 +40,26 @@
 
 以下 BENCH 和 GNU `size -B` 数值是 PC/GCC 主机参考值，**不是 STM32 目标测量值**。
 同一测试可执行文件中的算法共享目标级可执行文件与节区大小；这些数值不是单个函数的独立大小。
+`test_sanity` 仅检查配置、编译与链接环境，不属于算法运行时资源目标。
 
 | Target | Algorithm | Samples | Iterations | 平均耗时 (μs) | Executable bytes | .text | .data | .bss |
 |--------|-----------|---------|------------|---------------|------------------|-------|-------|------|
-| test_frequency | fft_interp | 8192 | 20 | 200.000000 | 193544 | 15644 | 52032 | 98752 |
-| test_frequency | fft_peak | 8192 | 20 | 150.000000 | 193544 | 15644 | 52032 | 98752 |
-| test_frequency | zero_cross_freq | 8192 | 5000 | 4.000000 | 193544 | 15644 | 52032 | 98752 |
-| test_frequency | zero_cross_period | 8192 | 5000 | 4.600000 | 193544 | 15644 | 52032 | 98752 |
-| test_fft_core | fft_core | 8192 | 40 | 75.000000 | 174050 | 13572 | 35592 | 98720 |
-| test_mag_phase | mag_phase_sine | 4096 | 1000 | 3.000000 | 165982 | 14224 | 27428 | 16832 |
-| test_mag_phase | mag_phase_square | 4096 | 1000 | 3.000000 | 165982 | 14224 | 27428 | 16832 |
-| test_mag_phase | mag_phase_triangle | 4096 | 1000 | 4.000000 | 165982 | 14224 | 27428 | 16832 |
-| test_phase | iq_phase | 1024 | 100 | 30.000000 | 1014740 | 829680 | 23528 | 16768 |
-| test_phase | xiebo_fundamental | 1024 | 100 | 20.000000 | 1014740 | 829680 | 23528 | 16768 |
+| test_frequency | fft_interp | 8192 | 20 | 300.000000 | 193544 | 15644 | 52032 | 98752 |
+| test_frequency | fft_peak | 8192 | 20 | 300.000000 | 193544 | 15644 | 52032 | 98752 |
+| test_frequency | zero_cross_freq | 8192 | 5000 | 6.400000 | 193544 | 15644 | 52032 | 98752 |
+| test_frequency | zero_cross_period | 8192 | 5000 | 7.200000 | 193544 | 15644 | 52032 | 98752 |
+| test_fft_core | fft_core | 8192 | 40 | 100.000000 | 174050 | 13572 | 35592 | 98720 |
+| test_amplitude | rms_sine | 4096 | 1000 | 10.000000 | 163864 | 13004 | 27428 | 384 |
+| test_amplitude | rms_square | 4096 | 1000 | 7.000000 | 163864 | 13004 | 27428 | 384 |
+| test_amplitude | rms_triangle | 4096 | 1000 | 6.000000 | 163864 | 13004 | 27428 | 384 |
+| test_mag_phase | mag_phase_sine | 4096 | 1000 | 5.000000 | 165982 | 14224 | 27428 | 16832 |
+| test_mag_phase | mag_phase_square | 4096 | 1000 | 6.000000 | 165982 | 14224 | 27428 | 16832 |
+| test_mag_phase | mag_phase_triangle | 4096 | 1000 | 5.000000 | 165982 | 14224 | 27428 | 16832 |
+| test_phase | iq_phase | 1024 | 100 | 50.000000 | 1015424 | 830092 | 23552 | 16768 |
+| test_phase | xiebo_fundamental | 1024 | 100 | 20.000000 | 1015424 | 830092 | 23552 | 16768 |
+| test_czt | czt_zoom | 2048 | 10 | 800.000000 | 1000995 | 829828 | 11240 | 65920 |
 | test_fir_response | fir_filter | 1024 | 200 | 5.000000 | 999817 | 853204 | 7056 | 4576 |
+| test_safety | safety_wrappers | 1024 | 100 | 10.000000 | 1224966 | 1037316 | 19456 | 20960 |
 
 ## 测频/测相源码覆盖矩阵
 
@@ -133,6 +139,8 @@
 | phase_+170deg | xiebo_fundamental | 512.000000 | 511.999969 | +0.000031 | +0.0000% | relative error <= 0.5% | PASS |
 | phase_45deg_noise | iq_phase | 0.785398 | 0.785369 | +0.000029 | N/A | circular error <= 0.5 degree | PASS |
 | phase_45deg_noise | xiebo_fundamental | 512.000000 | 512.042908 | +0.042908 | +0.0084% | relative error <= 0.5% | PASS |
+| phase_noncoherent_+80deg | iq_phase | 1.396263 | 1.396263 | +0.000000 | N/A | circular error <= 0.5 degree | PASS |
+| phase_noncoherent_-120deg_noise | iq_phase | -2.094395 | -2.093719 | +0.000676 | N/A | circular error <= 0.5 degree | PASS |
 
 ## CZT 频谱细化 (czt)
 
@@ -149,6 +157,8 @@
 |------|-----------|----------|----------|-----------|-----------|-----------|--------|
 | fir_convolution | fir_max_abs_error | 0.000000 | 0.000000 | +0.000000 | +0.0000% | absolute error <= 1e-5 | PASS |
 | fir_convolution | fir_filter_avg_us | 0.000000 | 5.000000 | N/A | N/A | benchmark is finite and positive | PASS |
+| fir_impulse | fir_max_abs_error | 0.000000 | 0.000000 | +0.000000 | +0.0000% | absolute error <= 1e-5 | PASS |
+| fir_impulse | fir_filter_avg_us | 0.000000 | 5.000000 | N/A | N/A | benchmark is finite and positive | PASS |
 
 ## 安全回归 (safety)
 

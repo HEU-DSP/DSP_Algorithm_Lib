@@ -23,12 +23,13 @@ void Create_data2handle(float32_t *p);
 void CalXiebo(float32_t *input, float32_t *output, int n);
 
 /**
- * @brief Estimate sine-wave phase by coherent I/Q correlation.
+ * @brief Estimate sine-wave phase with a DC-aware least-squares fit.
  * @param[in] f Signal frequency in hertz.
  * @param[in] fs Sampling frequency in hertz.
  * @param[in] N Number of input samples; must not exceed SAMPLE_N.
  * @param[in] adc_float Sample buffer.
  * @return Wrapped phase in radians in the interval [-pi, pi], or 0 for invalid input.
+ * @note Coherent sampling is not required; the fit uses all N samples.
  */
 float CalPhase(float f, float fs, int N, float32_t *adc_float);
 

@@ -9,9 +9,6 @@
 #include "arm_const_structs.h"
 #include <math.h>
 
-static float ref_i[SAMPLE_N];
-static float ref_q[SAMPLE_N];
-
 void Create_data2handle(float32_t *p)
 {
     for(int i = 0;i < SAMPLE_N; i++)
@@ -39,40 +36,60 @@ void CalXiebo(float32_t *input, float32_t *output, int n)
 
 float CalPhase(float f, float fs, int N, float32_t *adc_float)
 {
-    if (adc_float == NULL || f <= 0.0f || fs <= 0.0f || N <= 0 || f >= fs) {
+    double sum_y = 0.0;
+    double sum_c = 0.0;
+    double sum_s = 0.0;
+    double sum_cc = 0.0;
+    double sum_ss = 0.0;
+    double sum_cs = 0.0;
+    double sum_yc = 0.0;
+    double sum_ys = 0.0;
+
+    if (adc_float == NULL || f <= 0.0f || fs <= 0.0f || N <= 0 ||
+        N > SAMPLE_N || f >= fs) {
         return 0.0f;
     }
 
-    int samples_per_cycle = (int)(fs / f);
-    if (samples_per_cycle < 1) {
+    for (int i = 0; i < N; ++i) {
+        const double angle = 2.0 * (double)PI * (double)f * (double)i /
+                             (double)fs;
+        const double cosine = cos(angle);
+        const double sine = sin(angle);
+        const double sample = adc_float[i];
+
+        sum_y += sample;
+        sum_c += cosine;
+        sum_s += sine;
+        sum_cc += cosine * cosine;
+        sum_ss += sine * sine;
+        sum_cs += cosine * sine;
+        sum_yc += sample * cosine;
+        sum_ys += sample * sine;
+    }
+
+    const double sample_count = (double)N;
+    const double centered_cc = sum_cc - sum_c * sum_c / sample_count;
+    const double centered_ss = sum_ss - sum_s * sum_s / sample_count;
+    const double centered_cs = sum_cs - sum_c * sum_s / sample_count;
+    const double centered_yc = sum_yc - sum_y * sum_c / sample_count;
+    const double centered_ys = sum_ys - sum_y * sum_s / sample_count;
+    const double determinant = centered_cc * centered_ss -
+                               centered_cs * centered_cs;
+    const double determinant_scale = fmax(centered_cc * centered_ss, 1.0);
+
+    if (!isfinite(determinant) ||
+        fabs(determinant) <= 1.0e-12 * determinant_scale) {
         return 0.0f;
     }
-    int k = N / samples_per_cycle;
-    int N_new = k * samples_per_cycle;
-    if (N_new <= 0 || N_new > SAMPLE_N) {
-        return 0.0f;
-    }
 
-    float Ave = 0.0f;
-    float i_signal = 0;
-    float q_signal = 0;
-    float t;
+    const double cosine_coefficient =
+        (centered_yc * centered_ss - centered_ys * centered_cs) /
+        determinant;
+    const double sine_coefficient =
+        (centered_ys * centered_cc - centered_yc * centered_cs) /
+        determinant;
 
-    for(int i = 0; i < N_new; i++)
-    {
-        Ave += adc_float[i];
-    }
-    Ave /= (float)N_new;
-
-    for(int i = 0; i < N_new; i++)
-    {
-        t = (float)i / fs;
-        ref_i[i] = cosf(2.0f * PI * f * t);
-        ref_q[i] = sinf(2.0f * PI * f * t);
-        i_signal += (adc_float[i] - Ave) * ref_i[i];
-        q_signal += (adc_float[i] - Ave) * ref_q[i];
-    }
-    /* For x(t)=A*sin(wt+phase): <x,cos>=A/2*sin(phase),
-       <x,sin>=A/2*cos(phase), hence phase=atan2(I,Q). */
-    return atan2f(i_signal, q_signal);
+    /* For x(t)=A*sin(wt+phase), the fitted cosine coefficient is
+       A*sin(phase) and the sine coefficient is A*cos(phase). */
+    return (float)atan2(cosine_coefficient, sine_coefficient);
 }

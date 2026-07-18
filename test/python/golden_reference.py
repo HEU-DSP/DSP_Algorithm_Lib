@@ -12,14 +12,13 @@ import numpy as np
 # ============================================================
 
 def ref_frequency_fft_interp(signal, fs):
-    """FFT + 二次插值频率估计。
+    """FFT + 对数幅度抛物线插值频率估计。
 
     数学原理：
       1. 计算信号的 FFT，取幅度谱前 N/2 点
       2. 找到幅度最大的 bin（跳过 DC）
-      3. 用峰值 bin 及其左右邻点做二次插值，得到亚 bin 精度的频率
-         delta = (2*k*(c+a-2b) + a - c) / (2*(c+a-2b))
-         freq = delta * fs / N
+      3. 对峰值 bin 及其左右邻点的对数幅度做抛物线插值，
+         得到亚 bin 精度的频率
 
     参考：fft_interp_freq.c 中 cfft_f32_fre(flag=1)
     """
@@ -33,15 +32,16 @@ def ref_frequency_fft_interp(signal, fs):
     if peak_idx < 1 or peak_idx >= len(mag) - 1:
         return float(peak_idx) * fs / n
 
-    a = mag[peak_idx - 1]
-    b = mag[peak_idx]
-    c = mag[peak_idx + 1]
+    log_mag = np.log(np.maximum(mag, 1.0e-12))
+    a = log_mag[peak_idx - 1]
+    b = log_mag[peak_idx]
+    c = log_mag[peak_idx + 1]
 
-    denom_val = 2 * (a + c - 2 * b)
+    denom_val = a - 2 * b + c
     if abs(denom_val) < 1e-12:
         return float(peak_idx) * fs / n
 
-    delta = (a - c) / denom_val
+    delta = 0.5 * (a - c) / denom_val
     freq = (peak_idx + delta) * fs / n
     return freq
 

@@ -9,6 +9,7 @@ import numpy as np
 
 import run_test
 import report
+import golden_reference
 from signal_generator import FIR_COEFFICIENTS, generate_signal, write_signal_header
 
 
@@ -67,6 +68,35 @@ class ValidationLogicTests(unittest.TestCase):
         )
         self.assertEqual(result['status'], 'PASS')
         self.assertAlmostEqual(result['abs_error'], math.radians(0.2), places=7)
+
+    def test_noncoherent_phase_cases_only_check_iq_phase(self):
+        cases = run_test.suite_cases('phase', 'full')
+        noncoherent = [case for case in cases if case['phase_only']]
+        self.assertEqual(len(noncoherent), 2)
+        self.assertEqual([case['freq'] for case in noncoherent], [712.20777, 137.4])
+        self.assertAlmostEqual(math.degrees(noncoherent[0]['phase']), 80.0)
+        self.assertAlmostEqual(math.degrees(noncoherent[1]['phase']), -120.0)
+        self.assertEqual([case['noise'] for case in noncoherent], [0.0, 0.01])
+        for case in noncoherent:
+            checks = run_test.expected_checks('phase', case)
+            self.assertEqual(set(checks), {'iq_phase'})
+            self.assertEqual(checks['iq_phase'][1]['tolerance'], math.radians(0.5))
+
+    def test_fft_interpolation_reference_uses_log_magnitudes(self):
+        fs = 51200.0
+        samples = 8192
+        frequency = 1003.7
+        signal, _ = generate_signal(
+            'sine', frequency, 1.0, 0.23, fs, samples, seed=20260717,
+        )
+        reference = golden_reference.ref_frequency_fft_interp(signal, fs)
+        magnitudes = np.abs(np.fft.fft(signal)[:samples // 2])
+        index = int(np.argmax(magnitudes[1:]) + 1)
+        log_mag = np.log(np.maximum(magnitudes, 1.0e-12))
+        denominator = log_mag[index - 1] - 2.0 * log_mag[index] + log_mag[index + 1]
+        expected = (index + 0.5 * (log_mag[index - 1] - log_mag[index + 1]) /
+                    denominator) * fs / samples
+        self.assertAlmostEqual(reference, expected, places=9)
 
     def test_fft_core_has_non_quantized_cases_and_analytical_checks(self):
         self.assertEqual(
@@ -175,6 +205,44 @@ class ValidationLogicTests(unittest.TestCase):
             None,
         )
 
+    def test_resource_benchmarks_cover_all_algorithm_targets(self):
+        self.assertEqual(
+            run_test.RESOURCE_BENCHMARK_ALGORITHMS['amplitude'],
+            {'rms_sine', 'rms_square', 'rms_triangle'},
+        )
+        self.assertEqual(run_test.RESOURCE_BENCHMARK_ALGORITHMS['czt'], {'czt_zoom'})
+        self.assertEqual(
+            run_test.RESOURCE_BENCHMARK_ALGORITHMS['safety'], {'safety_wrappers'},
+        )
+        self.assertTrue(run_test.is_resource_baseline('amplitude', 'sine_1v', 'full'))
+        self.assertTrue(
+            run_test.is_resource_baseline('czt', 'freq_1000p3_amp_0p7', 'full')
+        )
+        self.assertTrue(
+            run_test.is_resource_baseline('safety', 'fixed_size_wrappers', 'full')
+        )
+        self.assertEqual(
+            sum(len(algorithms) for algorithms in
+                run_test.RESOURCE_BENCHMARK_ALGORITHMS.values()),
+            16,
+        )
+
+    def test_readmes_declare_breaking_include_migration_and_sanity_scope(self):
+        with open(os.path.join(run_test.PROJECT_ROOT, 'README.md'),
+                  encoding='utf-8') as stream:
+            root_readme = stream.read()
+        with open(os.path.join(run_test.PROJECT_ROOT, 'test', 'README.md'),
+                  encoding='utf-8') as stream:
+            test_readme = stream.read()
+
+        self.assertIn('目录迁移与兼容性（Breaking）', root_readme)
+        self.assertIn('FFTNt.h', root_readme)
+        self.assertIn('freq_measure/fft/fft_n.h', root_readme)
+        self.assertIn('IIR.h', root_readme)
+        self.assertIn('phase_measure/fir_filter/fir_filter.h', root_readme)
+        self.assertIn('test_sanity', test_readme)
+        self.assertIn('不属于算法运行时资源目标', test_readme)
+
     def test_compiler_description_uses_cmake_cache_compiler(self):
         with tempfile.TemporaryDirectory() as build_dir:
             compiler = os.path.join(build_dir, 'actual-gcc.exe')
@@ -251,9 +319,11 @@ class ValidationLogicTests(unittest.TestCase):
             {'target': 'test_fir_response', 'samples': 1024, 'freq': 1000.0},
         )
         cases = run_test.suite_cases('fir', 'full')
-        self.assertEqual(len(cases), 1)
+        self.assertEqual(len(cases), 2)
         self.assertEqual(cases[0]['samples'], 1024)
         self.assertEqual(cases[0]['waveform'], 'sine')
+        self.assertEqual(cases[1]['case_id'], 'fir_impulse')
+        self.assertEqual(cases[1]['waveform'], 'impulse')
 
         signal, raw = generate_signal(
             'sine', 1000.0, 1.0, 0.0, 51200.0, 1024, seed=20260717,
@@ -281,6 +351,14 @@ class ValidationLogicTests(unittest.TestCase):
         self.assertEqual(checks['fir_max_abs_error'][1]['kind'], 'absolute')
         self.assertEqual(checks['fir_max_abs_error'][1]['tolerance'], 1.0e-5)
 
+        impulse = np.zeros(1024, dtype=np.float32)
+        impulse[0] = 1.0
+        impulse_expected = np.convolve(
+            impulse.astype(np.float64), FIR_COEFFICIENTS, mode='full',
+        )[:len(impulse)].astype(np.float32)
+        np.testing.assert_allclose(impulse_expected[:11], FIR_COEFFICIENTS)
+        np.testing.assert_array_equal(impulse_expected[11:], 0.0)
+
 
 class ReportCompatibilityTests(unittest.TestCase):
     def test_report_renders_pc_gcc_resources_and_coverage_matrix(self):
@@ -305,6 +383,8 @@ class ReportCompatibilityTests(unittest.TestCase):
         self.assertIn(".data", markdown)
         self.assertIn(".bss", markdown)
         self.assertIn("不是 STM32 目标测量值", markdown)
+        self.assertIn("test_sanity", markdown)
+        self.assertIn("不属于算法运行时资源目标", markdown)
         self.assertIn("## 测频/测相源码覆盖矩阵", markdown)
         self.assertIn("freq_measure/fft/fft_n.c", markdown)
         self.assertIn("phase_measure/iq_demod/mag_phase.c", markdown)

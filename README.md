@@ -32,6 +32,26 @@ DSP_Algorithm_Lib/
 └── test/                             CMake + Python 仿真验证框架
 ```
 
+## 目录迁移与兼容性（Breaking）
+
+本次整理将旧中文目录和含义不清的文件名统一为英文领域目录。算法函数名大多保留，但旧的 `#include` 路径不再源码兼容，已有工程需要按下表更新头文件路径：
+
+| 旧头文件 | 新头文件 |
+|----------|----------|
+| `FFTNt.h` | `freq_measure/fft/fft_n.h` |
+| `Fre.h` | `freq_measure/fft_interp_freq/fft_interp_freq.h` |
+| `zero_cross.h` | `freq_measure/zero_cross_freq/zero_cross.h` |
+| `MAG.h` | `amp_measure/rms/rms_amplitude.h` |
+| `differAMP(1).h` | `amp_measure/diff_tri_amp/differ_amp.h` |
+| `flat_top_data(1).h` | `amp_measure/flattop_fft/flat_top_data.h` |
+| `Zoom_FFT.h` | `amp_measure/czt/czt_zoom_fft.h` |
+| `ffttest.h` | `phase_measure/iq_demod/iq_phase.h` |
+| `data.h` | `phase_measure/iq_demod/fft_buffer.h` |
+| `MAG_phase.h` | `phase_measure/iq_demod/mag_phase.h` |
+| `IIR.h` | `phase_measure/fir_filter/fir_filter.h` |
+
+这属于明确的 breaking include-path 迁移；合入后应同步修改下游工程的包含目录和 `#include` 语句。
+
 ## 模块说明
 
 ### 测频
@@ -64,7 +84,7 @@ DSP_Algorithm_Lib/
 
 | 文件 | 函数 | 说明 |
 |------|------|------|
-| `iq_phase.c/.h` | `CalPhase(f, fs, N, adc_float)` | 正交解调相位估计 |
+| `iq_phase.c/.h` | `CalPhase(f, fs, N, adc_float)` | 带直流项的正弦最小二乘相位估计（无需相干采样） |
 | | `CalXiebo(input, output, n)` | 谐波分析（FFT + 幅度谱） |
 | | `Create_data2handle(p)` | 构造 FFT 复数输入 |
 | `mag_phase.c/.h` | `Measuring_Sine/Square/Triangle_Amplitude()` | 测相模块配套幅度测量 |
@@ -97,7 +117,7 @@ cmake --build build --target test_sanity
 python test/python/run_test.py --module all --suite full
 ```
 
-完整数据集验证和报告生成方式见 [`test/README.md`](test/README.md)。Python/NumPy 生成确定性的数学真值数组，CMake/GCC 编译并运行真实 C 源码。运行时数值验证覆盖自定义 FFT 核心的直接频率/幅值、FFT 插值与过零测频、RMS 测幅、I/Q 多角度/噪声测相、谐波分析、测相配套正弦/方波/三角波幅度及保护/非法输入、CZT 测频/测幅，以及 FIR 的 11 个归一化系数 NumPy 卷积比较和零输入安全回归。差分三角波测幅、平顶窗 FFT 测幅、Backend 硬件转换和 `czt_Phase()` 未在这里数值建立；原始 FIR 设计缺少采样率规格，不能据此主张截止频率或通带性能。
+完整数据集验证和报告生成方式见 [`test/README.md`](test/README.md)。Python/NumPy 生成确定性的数学真值数组，CMake/GCC 编译并运行真实 C 源码。运行时数值验证覆盖自定义 FFT 核心的直接频率/幅值、FFT 插值与过零测频、RMS 测幅、I/Q 整周期与非相干频率的多角度/噪声测相、谐波分析、测相配套正弦/方波/三角波幅度及保护/非法输入、CZT 测频/测幅，以及 FIR 的确定性正弦和冲激 NumPy 卷积比较与零输入安全回归。差分三角波测幅、平顶窗 FFT 测幅、Backend 硬件转换和 `czt_Phase()` 未在这里数值建立；原始 FIR 设计缺少采样率规格，不能据此主张截止频率或通带性能。
 
 完整验证与报告命令：
 
@@ -110,7 +130,7 @@ python test/python/run_test.py --module all --suite full --save-json test/python
 python test/python/report.py --input test/python/full_results.json --output test/validation_report.md --title "DSP 算法验证报告"
 ```
 
-完整运行的 BENCH 加 GNU `size -B` 输出仅为 PC/GCC 主机参考时间与可执行文件、`.text`、`.data`、`.bss` 节区大小；同一测试目标内的算法共享目标映像大小，并非单独函数大小。主机耗时会随机器与负载变化，不能复制为 STM32 性能或资源测量。
+完整运行生成 16 条算法资源记录。BENCH 加 GNU `size -B` 输出仅为 PC/GCC 主机参考时间与可执行文件、`.text`、`.data`、`.bss` 节区大小；同一测试目标内的算法共享目标映像大小，并非单独函数大小。`test_sanity` 只用于配置、编译和链接环境检查，不是算法运行时资源目标。主机耗时会随机器与负载变化，不能复制为 STM32 性能或资源测量。
 
 ## 仓库组织说明
 

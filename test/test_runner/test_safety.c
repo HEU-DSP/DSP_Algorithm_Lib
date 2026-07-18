@@ -5,12 +5,16 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <time.h>
 
+#include "benchmark.h"
 #include "fft_buffer.h"
 #include "fir_filter.h"
 #include "iq_phase.h"
 
-int main(void)
+#define SAFETY_BENCHMARK_ITERATIONS 100U
+
+static int run_safety_workload(float32_t *fir_max_abs)
 {
     float32_t iq_input[SAMPLE_N] = {0.0f};
     float32_t iq_output[SAMPLE_N];
@@ -28,9 +32,6 @@ int main(void)
             break;
         }
     }
-    printf("RESULT:iq_invalid_length_unchanged:%d\n",
-           invalid_length_unchanged);
-
     float32_t fir_input[NUM_PER_CALL] = {0.0f};
     float32_t fir_output[NUM_PER_CALL];
     for (int i = 0; i < NUM_PER_CALL; ++i) {
@@ -47,7 +48,39 @@ int main(void)
             max_abs = value_abs;
         }
     }
-    printf("RESULT:fir_zero_max_abs:%.9f\n", max_abs);
+    *fir_max_abs = max_abs;
+    return invalid_length_unchanged;
+}
+
+int main(void)
+{
+    float32_t fir_max_abs = 0.0f;
+    const int invalid_length_unchanged = run_safety_workload(&fir_max_abs);
+    printf("RESULT:iq_invalid_length_unchanged:%d\n",
+           invalid_length_unchanged);
+    printf("RESULT:fir_zero_max_abs:%.9f\n", fir_max_abs);
+
+    volatile float32_t benchmark_sink = 0.0f;
+    float32_t benchmark_max_abs = 0.0f;
+    benchmark_sink += (float32_t)run_safety_workload(&benchmark_max_abs);
+    benchmark_sink += benchmark_max_abs;
+
+    const clock_t begin = clock();
+    for (unsigned int iteration = 0U;
+         iteration < SAFETY_BENCHMARK_ITERATIONS; ++iteration) {
+        benchmark_sink += (float32_t)run_safety_workload(&benchmark_max_abs);
+        benchmark_sink += benchmark_max_abs;
+    }
+    const clock_t end = clock();
+    const double average_us = benchmark_average_us(
+        begin, end, SAFETY_BENCHMARK_ITERATIONS);
+    printf("BENCH:safety_wrappers:%u:%.6f\n",
+           SAFETY_BENCHMARK_ITERATIONS, average_us);
+
+    if (!isfinite(average_us) || average_us <= 0.0 ||
+        !isfinite(benchmark_sink)) {
+        return 2;
+    }
 
     return 0;
 }
