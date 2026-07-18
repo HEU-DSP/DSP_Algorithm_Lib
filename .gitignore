@@ -1,0 +1,8 @@
+/build*/
+/test/generated/*
+!/test/generated/.gitkeep
+/test/python/__pycache__/
+/test/python/*_results.json
+/test/python/baseline_*.json
+*.pyc
+.vscode/

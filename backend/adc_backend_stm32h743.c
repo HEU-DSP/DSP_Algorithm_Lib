@@ -1,6 +1,6 @@
-/*
- * ADC Backend — STM32H743
- *   16-bit ADC (0~65535), VREF = 3.3V
+/**
+ * @file adc_backend_stm32h743.c
+ * @brief STM32H743 16-bit ADC conversion backend with a 3.3 V reference.
  */
 #include "adc_backend.h"
 
