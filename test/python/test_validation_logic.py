@@ -88,6 +88,32 @@ class ValidationLogicTests(unittest.TestCase):
             )
             self.assertEqual(checks['fft_core_magnitude'][1]['tolerance'], 0.005)
 
+    def test_mag_phase_uses_deterministic_adc_cases_and_waveform_labels(self):
+        self.assertEqual(
+            run_test.MODULES['mag_phase'],
+            {'target': 'test_mag_phase', 'samples': 4096, 'freq': 1000.0},
+        )
+        cases = run_test.suite_cases('mag_phase', 'full')
+        self.assertEqual(
+            [(case['waveform'], case['amplitude'], case['samples'], case['adc_bits'])
+             for case in cases],
+            [('sine', 1.0, 4096, 12),
+             ('square', 0.8, 4096, 12),
+             ('triangle', 1.2, 4096, 12)],
+        )
+        labels = {
+            'sine': 'mag_phase_sine',
+            'square': 'mag_phase_square',
+            'triangle': 'mag_phase_triangle',
+        }
+        for case in cases:
+            checks = run_test.expected_checks('mag_phase', case)
+            self.assertEqual(set(checks), {labels[case['waveform']]})
+            expected, validation = checks[labels[case['waveform']]]
+            self.assertEqual(expected, case['amplitude'])
+            self.assertEqual(validation['kind'], 'relative')
+            self.assertEqual(validation['tolerance'], 0.005)
+
     def test_runner_forwards_benchmark_records(self):
         completed = mock.Mock(
             returncode=0,

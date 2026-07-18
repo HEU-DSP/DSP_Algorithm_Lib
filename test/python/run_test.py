@@ -21,6 +21,7 @@ MODULES = {
     'frequency': {'target': 'test_frequency', 'samples': 8192, 'freq': 1000.0},
     'fft_core': {'target': 'test_fft_core', 'samples': 8192, 'freq': 1000.0},
     'amplitude': {'target': 'test_amplitude', 'samples': 4096, 'freq': 1000.0},
+    'mag_phase': {'target': 'test_mag_phase', 'samples': 4096, 'freq': 1000.0},
     'phase': {'target': 'test_phase', 'samples': 1024, 'freq': 50.0},
     'czt': {'target': 'test_czt', 'samples': 2048, 'freq': 1000.3},
     'safety': {'target': 'test_safety', 'samples': 1024, 'freq': 50.0},
@@ -134,6 +135,15 @@ def suite_cases(module, suite, seed=DEFAULT_SEED):
                   samples=4096, adc_bits=12),
         ]
         return _seed_cases(full, seed)
+    if module == 'mag_phase':
+        full = [
+            _case('sine_1v', waveform='sine', freq=1000.0, samples=4096, adc_bits=12),
+            _case('square_0p8v', waveform='square', freq=1000.0, amplitude=0.8,
+                  samples=4096, adc_bits=12),
+            _case('triangle_1p2v', waveform='triangle', freq=1000.0, amplitude=1.2,
+                  samples=4096, adc_bits=12),
+        ]
+        return _seed_cases(full if suite == 'full' else full[:1], seed)
     if module == 'phase':
         degrees = [-170, -90, -30, 0, 45, 90, 170]
         full = [
@@ -161,7 +171,7 @@ def custom_case(module, args):
     config = MODULES[module]
     waveform = 'sine' if module in ('frequency', 'fft_core', 'phase', 'czt', 'safety') else args.waveform
     adc_bits = args.adc_bits
-    if module in ('frequency', 'amplitude') and adc_bits == 0:
+    if module in ('frequency', 'amplitude', 'mag_phase') and adc_bits == 0:
         adc_bits = 12
     return _case(
         'custom', waveform=waveform,
@@ -188,6 +198,15 @@ def expected_checks(module, case):
         }
     if module == 'amplitude':
         labels = {'sine': 'rms_sine', 'square': 'rms_square', 'triangle': 'rms_triangle'}
+        return {labels[case['waveform']]: (
+            case['amplitude'], {'kind': 'relative', 'tolerance': 0.005,
+                                'description': 'relative error <= 0.5%'})}
+    if module == 'mag_phase':
+        labels = {
+            'sine': 'mag_phase_sine',
+            'square': 'mag_phase_square',
+            'triangle': 'mag_phase_triangle',
+        }
         return {labels[case['waveform']]: (
             case['amplitude'], {'kind': 'relative', 'tolerance': 0.005,
                                 'description': 'relative error <= 0.5%'})}
@@ -306,7 +325,7 @@ def run_case(module, case, cmake, build_dir):
 def parse_args():
     parser = argparse.ArgumentParser(description='DSP Algorithm Test Orchestrator')
     parser.add_argument('--module', default='all',
-                        choices=['frequency', 'fft_core', 'amplitude', 'phase', 'czt', 'safety', 'all'])
+                        choices=['frequency', 'fft_core', 'amplitude', 'mag_phase', 'phase', 'czt', 'safety', 'all'])
     parser.add_argument('--suite', default='smoke', choices=['smoke', 'full', 'custom'])
     parser.add_argument('--waveform', default='sine', choices=['sine', 'square', 'triangle'])
     parser.add_argument('--freq', type=float, default=None)

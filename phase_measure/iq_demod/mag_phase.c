@@ -4,70 +4,74 @@
  */
 
 #include "mag_phase.h"
-#include "math.h"
+#include <math.h>
+#include <stddef.h>
 
 // RMS-based amplitude helpers for sine, square, and triangle inputs.
 
 float Measuring_Sine_Amplitude(uint16_t length,uint16_t *AD_value)
 {
-	uint16_t i,A=2;
-	float C,temp=0,input,output;
-	float sum = 0;
-	C=3.3/4096;
-	sum = 0;
-	for(i=0;i<=length;i++)
-	{
-		sum = sum+AD_value[i];
+	uint32_t i;
+	double sum = 0.0;
+	double mean;
+	double square_sum = 0.0;
+	const double scale = 3.3 / 4096.0;
+
+	if (AD_value == NULL || length == 0U) {
+		return 0.0f;
 	}
-	sum = sum/length;
-	for(i=0;i<=length;i++)
-	{
-		temp=temp+(AD_value[i]-sum)*(AD_value[i]-sum)*C*C;
+	for (i = 0U; i < (uint32_t)length; ++i) {
+		sum += AD_value[i];
 	}
-	input=A*temp/length;
-	output=sqrt(input);
-	return output;
+	mean = sum / (double)length;
+	for (i = 0U; i < (uint32_t)length; ++i) {
+		const double difference = ((double)AD_value[i] - mean) * scale;
+		square_sum += difference * difference;
+	}
+	return sqrtf((float)(2.0 * square_sum / (double)length));
 }
 
 float Measuring_Square_Amplitude(uint16_t length,uint16_t *AD_value)
 {
-	uint16_t i,A=1;
-	float C,temp=0,input,output;
-	float sum = 0;
-	C=3.3/4096;
-	sum = 0;
-	for(i=0;i<=length;i++)
-	{
-		sum = sum+AD_value[i];
+	uint32_t i;
+	double sum = 0.0;
+	double mean;
+	double square_sum = 0.0;
+	const double scale = 3.3 / 4096.0;
+
+	if (AD_value == NULL || length == 0U) {
+		return 0.0f;
 	}
-	sum = sum/length;
-	for(i=0;i<=length;i++)
-	{
-		temp=temp+(AD_value[i]-sum)*(AD_value[i]-sum)*C*C;
+	for (i = 0U; i < (uint32_t)length; ++i) {
+		sum += AD_value[i];
 	}
-	input=A*temp/length;
-	output=sqrt(input);
-	return output;
+	mean = sum / (double)length;
+	for (i = 0U; i < (uint32_t)length; ++i) {
+		const double difference = ((double)AD_value[i] - mean) * scale;
+		square_sum += difference * difference;
+	}
+	return sqrtf((float)(square_sum / (double)length));
 }
 
 float Measuring_Triangle_Amplitude(uint16_t length,uint16_t *AD_value)
 {
-	uint16_t i,A=3;
-	float C,temp=0,input,output;
-	float sum = 0;
-	C=3.3/4096;
-	sum = 0;
-	for(i=0;i<=length;i++)
-	{
-		sum = sum+AD_value[i];
+	uint32_t i;
+	double sum = 0.0;
+	double mean;
+	double square_sum = 0.0;
+	const double scale = 3.3 / 4096.0;
+
+	if (AD_value == NULL || length == 0U) {
+		return 0.0f;
 	}
-	sum = sum/length;
-	for(i=0;i<=length;i++)
-	{
-		temp=temp+(AD_value[i]-sum)*(AD_value[i]-sum)*C*C;
+	for (i = 0U; i < (uint32_t)length; ++i) {
+		sum += AD_value[i];
 	}
-	input=A*temp/length;
-	output=sqrt(input);
-	return output;
+	mean = sum / (double)length;
+	for (i = 0U; i < (uint32_t)length; ++i) {
+		const double difference = ((double)AD_value[i] - mean) * scale;
+		square_sum += difference * difference;
+	}
+	return sqrtf((float)(3.0 * square_sum / (double)length));
 }
 

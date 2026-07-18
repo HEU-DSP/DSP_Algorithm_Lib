@@ -42,6 +42,13 @@ add_executable(test_amplitude
 )
 target_link_libraries(test_amplitude CMSISDSP m)
 
+# ---- Legacy I/Q amplitude helper validation runner ----
+add_executable(test_mag_phase
+    test_runner/test_mag_phase.c
+    ${ALGO_SRC_DIR}/phase_measure/iq_demod/mag_phase.c
+)
+target_link_libraries(test_mag_phase CMSISDSP m)
+
 # ---- Phase measurement test runner ----
 add_executable(test_phase
     test_runner/test_phase.c
@@ -73,6 +80,7 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
             test_frequency
             test_fft_core
             test_amplitude
+            test_mag_phase
             test_phase
             test_czt
             test_safety)
