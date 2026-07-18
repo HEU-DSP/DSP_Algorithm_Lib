@@ -2,8 +2,14 @@
 
 import math
 import os
+import re
 import shutil
 import subprocess
+
+
+DECIMAL_NUMBER = re.compile(
+    r'^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$'
+)
 
 
 def parse_gnu_size_output(output):
@@ -37,6 +43,8 @@ def parse_benchmark_line(line):
     if len(fields) != 4 or fields[0] != 'BENCH' or not fields[1].strip():
         raise ValueError(f'Malformed BENCH record: {line!r}')
     algorithm = fields[1].strip()
+    if not DECIMAL_NUMBER.fullmatch(fields[3].strip()):
+        raise ValueError(f'Invalid BENCH average time: {line!r}')
     try:
         iterations = int(fields[2].strip())
     except ValueError as error:
@@ -78,4 +86,8 @@ def collect_resource_metrics(executable, size_command=None):
             f'GNU size failed for {executable}: {completed.stderr.strip()}'
         )
     sections = parse_gnu_size_output(completed.stdout)
-    return {'executable_bytes': os.path.getsize(executable), **sections}
+    metrics = {'executable_bytes': os.path.getsize(executable), **sections}
+    if (metrics['executable_bytes'] <= 0 or metrics['text_bytes'] <= 0
+            or metrics['data_bytes'] <= 0 or metrics['bss_bytes'] < 0):
+        raise ValueError(f'Invalid GNU host executable resource sizes: {metrics}')
+    return metrics

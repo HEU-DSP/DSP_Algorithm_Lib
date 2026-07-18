@@ -39,6 +39,17 @@ RESOURCE_BASELINE_CASES = {
     'fir': 'fir_convolution',
 }
 
+RESOURCE_BENCHMARK_ALGORITHMS = {
+    'frequency': {'fft_interp', 'fft_peak', 'zero_cross_freq', 'zero_cross_period'},
+    'fft_core': {'fft_core'},
+    'amplitude': set(),
+    'mag_phase': {'mag_phase_sine', 'mag_phase_square', 'mag_phase_triangle'},
+    'phase': {'iq_phase', 'xiebo_fundamental'},
+    'czt': set(),
+    'fir': {'fir_filter'},
+    'safety': set(),
+}
+
 
 def value_or_default(value, default):
     return default if value is None else value
@@ -70,6 +81,32 @@ def describe_cmake(cmake):
     if completed.returncode == 0 and completed.stdout.strip():
         return completed.stdout.splitlines()[0]
     return os.path.basename(cmake)
+
+
+def compiler_from_cmake_cache(build_dir):
+    cache_path = os.path.join(build_dir, 'CMakeCache.txt')
+    if not os.path.isfile(cache_path):
+        raise FileNotFoundError(f'CMake cache not found: {cache_path}')
+    with open(cache_path, 'r', encoding='utf-8', errors='replace') as stream:
+        for line in stream:
+            if line.startswith('CMAKE_C_COMPILER:'):
+                compiler = line.split('=', 1)[1].strip()
+                if not compiler:
+                    raise ValueError('CMake cache has an empty CMAKE_C_COMPILER')
+                if not os.path.isfile(compiler):
+                    raise FileNotFoundError(
+                        f'CMake cache compiler does not exist: {compiler}'
+                    )
+                return compiler
+    raise ValueError(f'CMAKE_C_COMPILER is missing from: {cache_path}')
+
+
+def describe_configured_compiler(build_dir):
+    compiler = compiler_from_cmake_cache(build_dir)
+    completed = subprocess.run([compiler, '--version'], capture_output=True, text=True)
+    if completed.returncode or not completed.stdout.strip():
+        raise RuntimeError(f'Unable to describe configured compiler: {compiler}')
+    return completed.stdout.splitlines()[0]
 
 
 def make_error_result(module, case_id, error):
@@ -326,6 +363,20 @@ def run_executable(build_dir, target):
     return measured, benchmarks
 
 
+def validate_benchmark_algorithms(module, benchmarks):
+    expected = RESOURCE_BENCHMARK_ALGORITHMS[module]
+    algorithms = [benchmark['algorithm'] for benchmark in benchmarks]
+    actual = set(algorithms)
+    if len(algorithms) != len(actual):
+        raise ValueError(f'Duplicate BENCH algorithms for {module}: {algorithms}')
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise ValueError(
+            f'Unexpected BENCH algorithms for {module}; missing={missing}, extra={extra}'
+        )
+
+
 def is_resource_baseline(module, case_id, suite):
     if suite == 'custom':
         return True
@@ -380,6 +431,7 @@ def run_case(module, case, cmake, build_dir, suite):
     target = MODULES[module]['target']
     build_target(cmake, build_dir, target)
     measured, benchmarks = run_executable(build_dir, target)
+    validate_benchmark_algorithms(module, benchmarks)
     suffix = '.exe' if os.name == 'nt' else ''
     executable = os.path.join(build_dir, 'test', target + suffix)
     sizes = collect_resource_metrics(executable)
@@ -457,19 +509,12 @@ def main():
             resource_keys.add(key)
             unique_resources.append(resource)
 
-    compiler = args.c_compiler or shutil.which('gcc')
-    if not compiler:
-        raise FileNotFoundError('GCC compiler not found; pass --c-compiler or add gcc to PATH')
-    compiler_run = subprocess.run([compiler, '--version'], capture_output=True, text=True)
-    if compiler_run.returncode or not compiler_run.stdout.strip():
-        raise RuntimeError(f'Unable to describe compiler: {compiler}')
-
     payload = {
         'metadata': {
             'suite': args.suite, 'seed': args.seed,
             'generated_utc': datetime.now(timezone.utc).isoformat(),
             'cmake': describe_cmake(cmake),
-            'compiler': compiler_run.stdout.splitlines()[0],
+            'compiler': describe_configured_compiler(build_dir),
             'optimization': '-O2',
             'resource_scope': 'PC/GCC reference; not STM32 target usage',
             'resource_size_scope': (

@@ -42,6 +42,7 @@ class ResourceMetricsTests(unittest.TestCase):
             'BENCH:fft_core:0:1.0',
             'BENCH:fft_core:-1:1.0',
             'BENCH:fft_core:20:not-a-number',
+            'BENCH:fft_core:20:1_0',
             'BENCH:fft_core:20:nan',
             'BENCH:fft_core:20:inf',
             'BENCH:fft_core:20:0',
@@ -50,6 +51,36 @@ class ResourceMetricsTests(unittest.TestCase):
         for line in invalid_lines:
             with self.subTest(line=line), self.assertRaises(ValueError):
                 resource_metrics.parse_benchmark_line(line)
+
+    def test_collect_resource_metrics_rejects_nonpositive_required_sizes(self):
+        invalid_payloads = (
+            '0 456 0 456 1c8 test.exe\n',
+            '123 0 0 123 7b test.exe\n',
+        )
+        with tempfile.NamedTemporaryFile(delete=False) as stream:
+            stream.write(b'x')
+            executable = stream.name
+        try:
+            for payload in invalid_payloads:
+                completed = mock.Mock(returncode=0, stdout=payload, stderr='')
+                with self.subTest(payload=payload), \
+                     mock.patch('resource_metrics.subprocess.run', return_value=completed), \
+                     self.assertRaises(ValueError):
+                    resource_metrics.collect_resource_metrics(executable, 'size-tool')
+        finally:
+            os.unlink(executable)
+
+    def test_collect_resource_metrics_rejects_empty_executable(self):
+        payload = '123 456 0 579 243 test.exe\n'
+        completed = mock.Mock(returncode=0, stdout=payload, stderr='')
+        with tempfile.NamedTemporaryFile(delete=False) as stream:
+            executable = stream.name
+        try:
+            with mock.patch('resource_metrics.subprocess.run', return_value=completed):
+                with self.assertRaises(ValueError):
+                    resource_metrics.collect_resource_metrics(executable, 'size-tool')
+        finally:
+            os.unlink(executable)
 
     def test_resolve_size_command_uses_path_lookup(self):
         with mock.patch('resource_metrics.shutil.which', return_value='C:/Tools/size.exe') as which:

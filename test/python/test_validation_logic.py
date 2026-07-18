@@ -145,6 +145,62 @@ class ValidationLogicTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run_test.run_executable('build-dir', 'test_fft_core')
 
+    def test_resource_benchmarks_reject_missing_phase_algorithm(self):
+        with self.assertRaises(ValueError):
+            run_test.validate_benchmark_algorithms(
+                'phase',
+                [{'algorithm': 'iq_phase', 'iterations': 20, 'average_us': 1.0}],
+            )
+
+    def test_resource_benchmarks_reject_duplicate_phase_algorithm(self):
+        with self.assertRaises(ValueError):
+            run_test.validate_benchmark_algorithms(
+                'phase',
+                [
+                    {'algorithm': 'iq_phase', 'iterations': 20, 'average_us': 1.0},
+                    {'algorithm': 'iq_phase', 'iterations': 20, 'average_us': 1.0},
+                    {'algorithm': 'xiebo_fundamental', 'iterations': 20, 'average_us': 1.0},
+                ],
+            )
+
+    def test_resource_benchmarks_match_each_module_contract(self):
+        self.assertEqual(
+            run_test.validate_benchmark_algorithms(
+                'phase',
+                [
+                    {'algorithm': 'iq_phase', 'iterations': 20, 'average_us': 1.0},
+                    {'algorithm': 'xiebo_fundamental', 'iterations': 20, 'average_us': 1.0},
+                ],
+            ),
+            None,
+        )
+
+    def test_compiler_description_uses_cmake_cache_compiler(self):
+        with tempfile.TemporaryDirectory() as build_dir:
+            compiler = os.path.join(build_dir, 'actual-gcc.exe')
+            with open(compiler, 'w', encoding='utf-8') as stream:
+                stream.write('placeholder')
+            with open(os.path.join(build_dir, 'CMakeCache.txt'), 'w', encoding='utf-8') as stream:
+                stream.write(f'CMAKE_C_COMPILER:STRING={compiler}\n')
+            completed = mock.Mock(returncode=0, stdout='Actual GCC 1.2.3\n', stderr='')
+            with mock.patch('run_test.subprocess.run', return_value=completed) as run:
+                self.assertEqual(run_test.describe_configured_compiler(build_dir), 'Actual GCC 1.2.3')
+            run.assert_called_once_with([compiler, '--version'], capture_output=True, text=True)
+
+    def test_compiler_cache_parser_accepts_filepath_and_rejects_missing_path(self):
+        with tempfile.TemporaryDirectory() as build_dir:
+            compiler = os.path.join(build_dir, 'actual-gcc.exe')
+            with open(compiler, 'w', encoding='utf-8') as stream:
+                stream.write('placeholder')
+            cache_path = os.path.join(build_dir, 'CMakeCache.txt')
+            with open(cache_path, 'w', encoding='utf-8') as stream:
+                stream.write(f'CMAKE_C_COMPILER:FILEPATH={compiler}\n')
+            self.assertEqual(run_test.compiler_from_cmake_cache(build_dir), compiler)
+            with open(cache_path, 'w', encoding='utf-8') as stream:
+                stream.write('CMAKE_C_COMPILER:FILEPATH=missing-gcc.exe\n')
+            with self.assertRaises(FileNotFoundError):
+                run_test.compiler_from_cmake_cache(build_dir)
+
     def test_resource_baseline_case_selection(self):
         self.assertTrue(run_test.is_resource_baseline('frequency', 'integer_bin', 'full'))
         self.assertFalse(run_test.is_resource_baseline('frequency', 'with_noise', 'full'))
