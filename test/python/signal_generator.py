@@ -10,6 +10,12 @@ import argparse
 import sys
 
 
+FIR_COEFFICIENTS = np.array([
+    -79954467, 180870058, 486593190, -786079082, -406638723, 1394848222,
+    -406638723, -786079082, 486593190, 180870058, -79954467,
+], dtype=np.float64) / 2147483648.0
+
+
 def generate_sine(freq, amplitude, phase, sample_rate, samples):
     """生成正弦波信号。"""
     t = np.arange(samples, dtype=np.float64) / sample_rate
@@ -95,7 +101,22 @@ def generate_signal(waveform, freq, amplitude, phase, sample_rate,
     return signal, adc_raw
 
 
-def write_signal_header(signal_float, adc_raw, output_dir, metadata):
+def _write_float_array(stream, declaration, values, values_per_line=8):
+    """Write a C float array declaration with consistently formatted values."""
+    stream.write(f'{declaration} = {{\n')
+    for index, value in enumerate(values):
+        if index % values_per_line == 0:
+            stream.write('    ')
+        stream.write(f'{float(value):.10f}f')
+        if index < len(values) - 1:
+            stream.write(', ')
+        if index % values_per_line == values_per_line - 1:
+            stream.write('\n')
+    stream.write('\n};\n\n')
+
+
+def write_signal_header(signal_float, adc_raw, output_dir, metadata,
+                        expected_fir_output=None):
     """将信号数据写入 C 头文件。
 
     Args:
@@ -127,16 +148,17 @@ def write_signal_header(signal_float, adc_raw, output_dir, metadata):
         f.write(f'#define SIGNAL_NOISE_STD {metadata.get("noise_std", 0.0):.6f}f\n\n')
 
         # float signal array
-        f.write(f'float32_t test_signal_float[SIGNAL_LENGTH] = {{\n')
-        for i in range(samples):
-            if i % 8 == 0:
-                f.write('    ')
-            f.write(f'{signal_float[i]:.10f}f')
-            if i < samples - 1:
-                f.write(', ')
-            if i % 8 == 7:
-                f.write('\n')
-        f.write('\n};\n\n')
+        _write_float_array(
+            f, 'float32_t test_signal_float[SIGNAL_LENGTH]', signal_float,
+        )
+
+        if expected_fir_output is not None:
+            if len(expected_fir_output) != samples:
+                raise ValueError('expected_fir_output length must match signal length')
+            _write_float_array(
+                f, 'static const float expected_fir_output[SIGNAL_LENGTH]',
+                expected_fir_output,
+            )
 
         # ADC raw value array
         if adc_raw is not None:

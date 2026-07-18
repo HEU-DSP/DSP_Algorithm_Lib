@@ -64,6 +64,13 @@ add_executable(test_czt
 )
 target_link_libraries(test_czt CMSISDSP m)
 
+# ---- FIR response validation runner ----
+add_executable(test_fir_response
+    test_runner/test_fir_response.c
+    ${ALGO_SRC_DIR}/phase_measure/fir_filter/fir_filter.c
+)
+target_link_libraries(test_fir_response CMSISDSP m)
+
 # ---- Fixed-size wrapper safety regression runner ----
 add_executable(test_safety
     test_runner/test_safety.c
@@ -83,6 +90,7 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
             test_mag_phase
             test_phase
             test_czt
+            test_fir_response
             test_safety)
         target_compile_options(${test_target} PRIVATE -O2)
     endforeach()

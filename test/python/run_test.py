@@ -9,7 +9,9 @@ import shutil
 import subprocess
 import sys
 
-from signal_generator import generate_signal, write_signal_header
+import numpy as np
+
+from signal_generator import FIR_COEFFICIENTS, generate_signal, write_signal_header
 
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -24,6 +26,7 @@ MODULES = {
     'mag_phase': {'target': 'test_mag_phase', 'samples': 4096, 'freq': 1000.0},
     'phase': {'target': 'test_phase', 'samples': 1024, 'freq': 50.0},
     'czt': {'target': 'test_czt', 'samples': 2048, 'freq': 1000.3},
+    'fir': {'target': 'test_fir_response', 'samples': 1024, 'freq': 1000.0},
     'safety': {'target': 'test_safety', 'samples': 1024, 'freq': 50.0},
 }
 
@@ -86,6 +89,10 @@ def evaluate_check(module, case_id, label, expected, actual, check):
         abs_error = circular_abs_error(actual, expected)
         rel_error = None
         passed = abs_error <= check['tolerance']
+    elif kind == 'positive_finite':
+        abs_error = None
+        rel_error = None
+        passed = math.isfinite(actual) and actual > 0.0
     else:
         abs_error = abs(actual - expected)
         rel_error = abs_error / abs(expected) if abs(expected) > 1e-12 else abs_error
@@ -164,12 +171,14 @@ def suite_cases(module, suite, seed=DEFAULT_SEED):
         return _seed_cases(full if suite == 'full' else full[:1], seed)
     if module == 'safety':
         return _seed_cases([_case('fixed_size_wrappers', samples=1024)], seed)
+    if module == 'fir':
+        return _seed_cases([_case('fir_convolution', samples=1024)], seed)
     raise ValueError(f'Unknown module: {module}')
 
 
 def custom_case(module, args):
     config = MODULES[module]
-    waveform = 'sine' if module in ('frequency', 'fft_core', 'phase', 'czt', 'safety') else args.waveform
+    waveform = 'sine' if module in ('frequency', 'fft_core', 'phase', 'czt', 'fir', 'safety') else args.waveform
     adc_bits = args.adc_bits
     if module in ('frequency', 'amplitude', 'mag_phase') and adc_bits == 0:
         adc_bits = 12
@@ -251,6 +260,15 @@ def expected_checks(module, case):
                 0.0, {'kind': 'absolute', 'tolerance': 1.0e-6,
                       'description': 'zero-input FIR output <= 1e-6'}),
         }
+    if module == 'fir':
+        return {
+            'fir_max_abs_error': (
+                0.0, {'kind': 'absolute', 'tolerance': 1.0e-5,
+                      'description': 'absolute error <= 1e-5'}),
+            'fir_filter_avg_us': (
+                0.0, {'kind': 'positive_finite', 'tolerance': 0.0,
+                      'description': 'benchmark is finite and positive'}),
+        }
     raise ValueError(f'Unknown module: {module}')
 
 
@@ -290,6 +308,9 @@ def run_executable(build_dir, target):
             _, label, value = line.split(':', 2)
             measured[label.strip()] = float(value.strip())
         elif line.startswith('BENCH:'):
+            _, label, iterations, avg_us = line.split(':', 3)
+            measured[f'{label.strip()}_iterations'] = float(iterations.strip())
+            measured[f'{label.strip()}_avg_us'] = float(avg_us.strip())
             print(line)
     return measured
 
@@ -306,7 +327,14 @@ def run_case(module, case, cmake, build_dir):
         'sample_rate': case['fs'], 'samples': case['samples'],
         'noise_std': case['noise'], 'adc_bits': case['adc_bits'], 'vref': 3.3,
     }
-    write_signal_header(signal, raw, GENERATED_DIR, metadata)
+    expected_fir_output = None
+    if module == 'fir':
+        expected_fir_output = np.convolve(
+            signal.astype(np.float64), FIR_COEFFICIENTS, mode='full',
+        )[:len(signal)].astype(np.float32)
+    write_signal_header(
+        signal, raw, GENERATED_DIR, metadata, expected_fir_output=expected_fir_output,
+    )
     target = MODULES[module]['target']
     build_target(cmake, build_dir, target)
     measured = run_executable(build_dir, target)
@@ -325,7 +353,7 @@ def run_case(module, case, cmake, build_dir):
 def parse_args():
     parser = argparse.ArgumentParser(description='DSP Algorithm Test Orchestrator')
     parser.add_argument('--module', default='all',
-                        choices=['frequency', 'fft_core', 'amplitude', 'mag_phase', 'phase', 'czt', 'safety', 'all'])
+                        choices=['frequency', 'fft_core', 'amplitude', 'mag_phase', 'phase', 'czt', 'fir', 'safety', 'all'])
     parser.add_argument('--suite', default='smoke', choices=['smoke', 'full', 'custom'])
     parser.add_argument('--waveform', default='sine', choices=['sine', 'square', 'triangle'])
     parser.add_argument('--freq', type=float, default=None)

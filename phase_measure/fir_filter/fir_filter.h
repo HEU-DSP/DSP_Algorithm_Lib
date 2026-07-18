@@ -9,7 +9,7 @@
 #include "arm_math.h"
 
 #define NUM_PER_CALL 1024
-#define FIR_EFFICIENT_NUM 101
+#define FIR_EFFICIENT_NUM 11U
 
 /** @brief Initialize the fixed FIR filter instance. */
 void arm_emg_f32_filter_init(void);

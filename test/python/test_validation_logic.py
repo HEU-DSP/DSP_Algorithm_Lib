@@ -5,9 +5,11 @@ import tempfile
 import unittest
 from unittest import mock
 
+import numpy as np
+
 import run_test
 import report
-from signal_generator import generate_signal
+from signal_generator import FIR_COEFFICIENTS, generate_signal, write_signal_header
 
 
 class ValidationLogicTests(unittest.TestCase):
@@ -126,6 +128,42 @@ class ValidationLogicTests(unittest.TestCase):
 
         self.assertEqual(measured['fft_core_freq'], 1000.0)
         print_mock.assert_any_call('BENCH:fft_core:20:12.5')
+
+    def test_fir_contract_generates_numpy_convolution_reference(self):
+        self.assertEqual(
+            run_test.MODULES['fir'],
+            {'target': 'test_fir_response', 'samples': 1024, 'freq': 1000.0},
+        )
+        cases = run_test.suite_cases('fir', 'full')
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]['samples'], 1024)
+        self.assertEqual(cases[0]['waveform'], 'sine')
+
+        signal, raw = generate_signal(
+            'sine', 1000.0, 1.0, 0.0, 51200.0, 1024, seed=20260717,
+        )
+        expected = np.convolve(
+            signal.astype(np.float64), FIR_COEFFICIENTS, mode='full',
+        )[:len(signal)].astype(np.float32)
+        self.assertEqual(expected.shape, signal.shape)
+        self.assertTrue(np.isfinite(expected).all())
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            metadata = {
+                'waveform': 'sine', 'freq': 1000.0, 'amplitude': 1.0,
+                'phase': 0.0, 'sample_rate': 51200.0, 'samples': 1024,
+            }
+            header_path = write_signal_header(
+                signal, raw, output_dir, metadata, expected_fir_output=expected,
+            )
+            with open(header_path, encoding='utf-8') as stream:
+                header = stream.read()
+        self.assertIn('static const float expected_fir_output[SIGNAL_LENGTH]', header)
+
+        checks = run_test.expected_checks('fir', cases[0])
+        self.assertEqual(checks['fir_max_abs_error'][0], 0.0)
+        self.assertEqual(checks['fir_max_abs_error'][1]['kind'], 'absolute')
+        self.assertEqual(checks['fir_max_abs_error'][1]['tolerance'], 1.0e-5)
 
 
 class ReportCompatibilityTests(unittest.TestCase):
