@@ -18,7 +18,7 @@ uint16_t idx_up[1023], idx_down[1023];
 
 
 
-//�������򷽷�
+// Readable implementation note.
 void quick_sort_large(float32_t* arr, uint32_t length) {
 
     typedef struct {
@@ -86,7 +86,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 //		idx_down[i]=0;
 //
 //	}
-	//ȥ��ֱ��ƫ��
+	// Readable implementation note.
 	for(i=0;i<Length;i++)
 	{
 		average+=AD_value[i];
@@ -100,7 +100,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 
 		median_differ = 0;
 
-	//���ȡ����ֵ
+	// Readable implementation note.
 	for(i=0;i<Length-1;i++)
 	{
 		differ_data[i]=AD_value1[i+1]-AD_value1[i];
@@ -116,11 +116,11 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 		}
 	}
 
-	//����ֵ��С��������
+	// Readable implementation note.
 	quick_sort_large(abs_differ_data,Length-1);
 
 
-	//ȡ��50%ƽ��ֵ
+	// Readable implementation note.
 	for(t=(Length-1)/2;t<Length-1;t++)
 	{
 		median_differ = median_differ + abs_differ_data[t];
@@ -128,7 +128,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 	median_differ = median_differ/(Length/2);
 
 
-	//Ѱ���ǲ����岨��
+	// Readable implementation note.
 	for ( j = 1; j < Length-2 ; j++)
 	{
         if ((differ_data[j] < median_differ/2 && differ_data[j]>0 )||(differ_data[j]>-median_differ/2 && differ_data[j]<0))
@@ -149,7 +149,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
         }
     }
 
-		//���ֵ
+		// Readable implementation note.
 	for(k=0;k<cnt_up;k++)
 	{
 		Amp = Amp + (median_differ- AD_value1[idx_up[k]] - AD_value1[idx_up[k]+1])/2;

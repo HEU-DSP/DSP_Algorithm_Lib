@@ -18,21 +18,21 @@ float cfft_f32_fre(float32_t fs,uint16_t *AD_Value,uint8_t flag)
 
 	for(i=0; i<MAX_FFT_N; i++)
 	{
-		/* ��������ֱ��������500Hz���Ҳ���ɣ����β�����MAX_FFT_N����ʼ��λ60�� */
+		/* Load ADC samples as the real part of the FFT input. */
 		s[i].real = AD_Value[i];
 		s[i].imag = 0;
 	}
 
-	/* MAX_FFT_N�����FFT */
+	/* Compute the MAX_FFT_N-point FFT. */
 	cfft(s, MAX_FFT_N);
 
-	/* �����Ƶ */
+	/* Convert each complex bin to magnitude. */
 	for(k=0; k<MAX_FFT_N; k++)
 	{
 		arm_sqrt_f32((float32_t)(s[k].real *s[k].real+ s[k].imag*s[k].imag ), &s[k].real);
 	}
 
-	/* ���ڴ�ӡ���ķ�Ƶ */
+	/* Search positive-frequency bins and skip DC. */
 	temp_1 = 2U;
 	for(j=2; j<MAX_FFT_N/2; j++)
 	{

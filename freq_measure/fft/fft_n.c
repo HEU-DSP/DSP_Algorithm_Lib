@@ -4,21 +4,14 @@
  */
 
 #include "fft_n.h"
-/*
-*********************************************************************************************************
-*	�� �� ��: Int_FFT_TAB
-*	����˵��: ���Һ����ұ�
-*	��    ��: FFT����
-*	�� �� ֵ: ��
-*********************************************************************************************************
-*/
+/* Twiddle-factor lookup tables for the FFT length. */
 float32_t   costab[MAX_FFT_N/2];
 float32_t   sintab[MAX_FFT_N/2];
 void InitTableFFT(uint32_t n)
 {
 	uint32_t i;
 
-/* ����ʹ�������ȡcos��sinֵ */
+/* Precompute sine and cosine twiddle factors. */
 
 	for (i = 0; i < n/2; i ++ )
 	{
@@ -27,14 +20,7 @@ void InitTableFFT(uint32_t n)
 	}
 
 }
-/*
-*********************************************************************************************************
-*	�� �� ��: find_exponent
-*	����˵��: ������2Ϊ�׵Ķ���
-*	��    ��: FFT����
-*	�� �� ֵ: ��2Ϊ�׵Ķ���
-*********************************************************************************************************
-*/
+/* Return floor(log2(m)); zero has no valid exponent. */
 int find_exponent(unsigned int m) {
 
 	  int exponent = 0;
@@ -51,33 +37,23 @@ int find_exponent(unsigned int m) {
 }
 
 
-/*
-*********************************************************************************************************
-*	�� �� ��: cfft
-*	����˵��: ������ĸ�������п��ٸ���Ҷ�任��FFT��
-*	��    ��: *_ptr �����ṹ������׵�ַָ��struct��
-*             FFT_N ��ʾ����
-*	�� �� ֵ: ��
-*********************************************************************************************************
-*/
+/* Iterative radix-2 complex FFT with bit-reversed input ordering. */
 int index1;
 void cfft(struct compx *_ptr, uint32_t FFT_N )
 {
 	float32_t TempReal1, TempImag1, TempReal2, TempImag2;
 	uint32_t k,i,j,z;
-	uint32_t Butterfly_NoPerColumn;				    /* ÿ�����εĵ������� */
-	uint32_t Butterfly_NoOfGroup;					/* ������ĵڼ��� */
-	uint32_t Butterfly_NoPerGroup;					/* ������ĵڼ������� */
+	uint32_t Butterfly_NoPerColumn;				    /* Readable implementation note. */
+	uint32_t Butterfly_NoOfGroup;					/* Readable implementation note. */
+	uint32_t Butterfly_NoPerGroup;					/* Readable implementation note. */
 	uint32_t ButterflyIndex1,ButterflyIndex2,P,J;
 	uint32_t L;
 	uint32_t M;
   index1 = find_exponent(FFT_N);
-	z=FFT_N/2;                  					/* ��ַ���㣬������Ȼ˳���ɵ�λ�򣬲����׵��㷨 */
+	z=FFT_N/2;                  					/* Readable implementation note. */
 	for(i=0,j=0;i<FFT_N-1;i++)
 	{
-		/*
-		  ���i<j,�����б�ַ i=j˵������������i>j˵��ǰ���Ѿ��任���ˣ������ٱ仯��ע������һ����ʵ�� ���������� ���óɽ����
-		*/
+		/* Readable implementation note. */
 		if(i<j)
 		{
 			TempReal1  = _ptr[j].real;
@@ -85,43 +61,43 @@ void cfft(struct compx *_ptr, uint32_t FFT_N )
 			_ptr[i].real= TempReal1;
 		}
 
-		k=z;                    				  /*��j����һ����λ�� */
+		k=z;                    				  /* Readable implementation note. */
 
-		while(k<=j)               				  /* ���k<=j,��ʾj�����λΪ1 */
+		while(k<=j)               				  /* Readable implementation note. */
 		{
-			j=j-k;                 				  /* �����λ���0 */
-			k=k/2;                 				  /* k/2���Ƚϴθ�λ���������ƣ�����Ƚϣ�ֱ��ĳ��λΪ0��ͨ�������Ǿ�j=j+kʹ���Ϊ1 */
+			j=j-k;                 				  /* Readable implementation note. */
+			k=k/2;                 				  /* Readable implementation note. */
 		}
 
-		j=j+k;                   				  /* ����һ������ţ������0�����0��Ϊ1 */
+		j=j+k;                   				  /* Readable implementation note. */
 	}
 
-	/* ��L������(M)��Butterfly_NoOfGroup��(Butterfly_NoPerColumn)��J������(Butterfly_NoPerGroup)****** */
-	/* ���ε�������2�ı����ݼ�Butterfly_NoPerColumn��ÿ���е��εĸ�����2�ı�������Butterfly_NoPerGroup */
-	/* �ڼ������ʱ��ÿL�еĵ�������,һ����M�У�ÿ������е��εĸ���,���εĽ���(0,1,2.....M-1) */
+	/* Readable implementation note. */
+	/* Readable implementation note. */
+	/* Readable implementation note. */
 	Butterfly_NoPerColumn = FFT_N;
 	Butterfly_NoPerGroup = 1;
 	M =index1;
 	for ( L = 0;L < M; L++ )
 	{
-		Butterfly_NoPerColumn >>= 1;		/* �������� ����N=8����(4,2,1) */
+		Butterfly_NoPerColumn >>= 1;		/* Readable implementation note. */
 
-		/* ��L������ ��Butterfly_NoOfGroup��	��0,1��....Butterfly_NoOfGroup-1��*/
+		/* Readable implementation note. */
 		for ( Butterfly_NoOfGroup = 0;Butterfly_NoOfGroup < Butterfly_NoPerColumn;Butterfly_NoOfGroup++ )
 		{
-			for ( J = 0;J < Butterfly_NoPerGroup;J ++ )	    /* �� Butterfly_NoOfGroup ���еĵ�J�� */
-			{					   						    /* �� ButterflyIndex1 �͵� ButterflyIndex2 ��Ԫ������������,WNC */
+			for ( J = 0;J < Butterfly_NoPerGroup;J ++ )	    /* Readable implementation note. */
+			{					   						    /* Readable implementation note. */
 				ButterflyIndex1 = ( ( Butterfly_NoOfGroup * Butterfly_NoPerGroup ) << 1 ) + J;/* (0,2,4,6)(0,1,4,5)(0,1,2,3) */
-				ButterflyIndex2 = ButterflyIndex1 + Butterfly_NoPerGroup;/* ����Ҫ����������������Butterfly_NoPerGroup (ge=1,2,4) */
-				P = J * Butterfly_NoPerColumn;				/* �����൱��P=J*2^(M-L),����һ�������±궼��N (0,0,0,0)(0,2,0,2)(0,1,2,3) */
+				ButterflyIndex2 = ButterflyIndex1 + Butterfly_NoPerGroup;/* Readable implementation note. */
+				P = J * Butterfly_NoPerColumn;				/* Readable implementation note. */
 
-				/* �����ת�����ӳ˻� */
+				/* Readable implementation note. */
 				TempReal2 = _ptr[ButterflyIndex2].real * costab[ P ] +  _ptr[ButterflyIndex2].imag * sintab[ P ];
 				TempImag2 = _ptr[ButterflyIndex2].imag * costab[ P ] -  _ptr[ButterflyIndex2].real * sintab[ P ] ;
 				TempReal1 = _ptr[ButterflyIndex1].real;
 				TempImag1 = _ptr[ButterflyIndex1].imag;
 
-				/* �������� */
+				/* Readable implementation note. */
 				_ptr[ButterflyIndex1].real = TempReal1 + TempReal2;
 				_ptr[ButterflyIndex1].imag = TempImag1 + TempImag2;
 				_ptr[ButterflyIndex2].real = TempReal1 - TempReal2;
@@ -129,6 +105,6 @@ void cfft(struct compx *_ptr, uint32_t FFT_N )
 			}
 		}
 
-		Butterfly_NoPerGroup<<=1;							/* һ���е��εĸ���(1,2,4) */
+		Butterfly_NoPerGroup<<=1;							/* Readable implementation note. */
 	}
 }
