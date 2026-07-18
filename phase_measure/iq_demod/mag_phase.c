@@ -74,4 +74,3 @@ float Measuring_Triangle_Amplitude(uint16_t length,uint16_t *AD_value)
 	}
 	return sqrtf((float)(3.0 * square_sum / (double)length));
 }
-
