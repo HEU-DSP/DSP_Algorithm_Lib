@@ -854,6 +854,7 @@ float32_t  FFT_Output[Length*2];
 uint32_t temp_1,magmax;
 float32_t s_Amp[Length];
 float32_t SinFlatTopWinAmpFactor = 4.64;
+/* 加平顶窗后进行 FFT，搜索基波峰值频点，按正弦波幅度公式反算幅值。 */
 
 
 
@@ -896,6 +897,7 @@ float Sin_Amp_FFT(uint16_t *AD_Value)
 	return Amp;
 }
 
+/* 加平顶窗后进行 FFT，提取基波和三次、五次谐波幅值，加权最小二乘合成方波幅度。 */
 float Square_Amp_FFT(uint16_t *AD_Value)
 {
 
@@ -947,6 +949,7 @@ float Square_Amp_FFT(uint16_t *AD_Value)
 	return Amp;
 }
 
+/* 加平顶窗后进行 FFT，提取基波和三次、五次谐波幅值，加权最小二乘合成三角波幅度。 */
 float Triangle_Amp_FFT(uint16_t *AD_Value)
 {
 

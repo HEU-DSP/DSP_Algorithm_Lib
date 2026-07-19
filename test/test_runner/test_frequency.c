@@ -55,7 +55,7 @@ int main(void)
     float period_zc = ZeroCross_Period(signal_float, SIGNAL_LENGTH, SIGNAL_FS);
     printf("RESULT:zero_cross_period:%.6f\n", period_zc);
 
-    /* Warm up each measured path before timing its actual algorithm call. */
+    /* 正式计时前先预热每条被测路径，减小首次调用开销的影响。 */
     benchmark_sink += cfft_f32_fre(SIGNAL_FS, test_signal_raw, 1);
     begin = clock();
     for (iteration = 0U; iteration < benchmark_iterations; ++iteration) {

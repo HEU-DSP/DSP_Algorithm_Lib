@@ -1,6 +1,6 @@
 /**
  * @file test_fir_response.c
- * @brief Validate the fixed FIR wrapper against the generated convolution reference.
+ * @brief 使用生成的卷积参考值验证固定参数 FIR 封装。
  */
 
 #include <math.h>

@@ -14,41 +14,41 @@ DSP_Algorithm_Lib/
 │   ├── adc_backend_stm32h723.c       STM32H723 后端（16-bit ADC）
 │   └── adc_backend_stm32h743.c       STM32H743 后端（16-bit ADC）
 │
-├── freq_measure/
-│   ├── fft/                          自定义基-2 FFT
-│   ├── fft_interp_freq/              FFT 频谱峰值插值测频
-│   └── zero_cross_freq/              过零比较频率测量
+├── 测频/
+│   ├── FFT实现/                          自定义基-2 FFT
+│   ├── FFT二次插值测频/              FFT 频谱峰值插值测频
+│   └── 过零比较测频/              过零比较频率测量
 │
-├── amp_measure/
-│   ├── rms/                          RMS 幅度测量
-│   ├── diff_tri_amp/                 差分法三角波幅度测量
-│   ├── flattop_fft/                  平顶窗 FFT 幅度测量
-│   └── czt/                          CZT Zoom-FFT 频谱细化
+├── 测幅/
+│   ├── 均方根测幅/                          RMS 幅度测量
+│   ├── 差分三角波测幅/                 差分法三角波幅度测量
+│   ├── 平顶窗FFT测幅/                  平顶窗 FFT 幅度测量
+│   └── CZT频谱细化/                          CZT Zoom-FFT 频谱细化
 │
-├── phase_measure/
-│   ├── iq_demod/                     I/Q 正交解调相位估计
-│   └── fir_filter/                   FIR 带通滤波器
+├── 测相/
+│   ├── 正交解调测相/                     I/Q 正交解调相位估计
+│   └── FIR滤波/                   FIR 带通滤波器
 │
 └── test/                             CMake + Python 仿真验证框架
 ```
 
 ## 目录迁移与兼容性（Breaking）
 
-本次整理将旧中文目录和含义不清的文件名统一为英文领域目录。算法函数名大多保留，但旧的 `#include` 路径不再源码兼容，已有工程需要按下表更新头文件路径：
+本次整理将旧中文目录和含义不清的文件名统一为中文领域目录。算法函数名大多保留，但旧的 `#include` 路径不再源码兼容，已有工程需要按下表更新头文件路径：
 
 | 旧头文件 | 新头文件 |
 |----------|----------|
-| `FFTNt.h` | `freq_measure/fft/fft_n.h` |
-| `Fre.h` | `freq_measure/fft_interp_freq/fft_interp_freq.h` |
-| `zero_cross.h` | `freq_measure/zero_cross_freq/zero_cross.h` |
-| `MAG.h` | `amp_measure/rms/rms_amplitude.h` |
-| `differAMP(1).h` | `amp_measure/diff_tri_amp/differ_amp.h` |
-| `flat_top_data(1).h` | `amp_measure/flattop_fft/flat_top_data.h` |
-| `Zoom_FFT.h` | `amp_measure/czt/czt_zoom_fft.h` |
-| `ffttest.h` | `phase_measure/iq_demod/iq_phase.h` |
-| `data.h` | `phase_measure/iq_demod/fft_buffer.h` |
-| `MAG_phase.h` | `phase_measure/iq_demod/mag_phase.h` |
-| `IIR.h` | `phase_measure/fir_filter/fir_filter.h` |
+| `FFTNt.h` | `测频/FFT实现/fft_n.h` |
+| `Fre.h` | `测频/FFT二次插值测频/fft_interp_freq.h` |
+| `zero_cross.h` | `测频/过零比较测频/zero_cross.h` |
+| `MAG.h` | `测幅/均方根测幅/rms_amplitude.h` |
+| `differAMP(1).h` | `测幅/差分三角波测幅/differ_amp.h` |
+| `flat_top_data(1).h` | `测幅/平顶窗FFT测幅/flat_top_data.h` |
+| `Zoom_FFT.h` | `测幅/CZT频谱细化/czt_zoom_fft.h` |
+| `ffttest.h` | `测相/正交解调测相/iq_phase.h` |
+| `data.h` | `测相/正交解调测相/fft_buffer.h` |
+| `MAG_phase.h` | `测相/正交解调测相/mag_phase.h` |
+| `IIR.h` | `测相/FIR滤波/fir_filter.h` |
 
 这属于明确的 breaking include-path 迁移；合入后应同步修改下游工程的包含目录和 `#include` 语句。
 
@@ -112,7 +112,7 @@ DSP_Algorithm_Lib/
 
 ```powershell
 git submodule update --init --recursive
-cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_C_COMPILER=gcc
 cmake --build build --target test_sanity
 python test/python/run_test.py --module all --suite full
 ```
@@ -134,7 +134,7 @@ python test/python/report.py --input test/python/full_results.json --output test
 
 ## 仓库组织说明
 
-本项目是纯 C 算法库，继续按 `freq_measure`、`amp_measure`、`phase_measure` 和 `backend` 进行领域分层。每个算法目录直接保存配套 `.c/.h`，公共仿真与回归测试集中在 `test/`；不引入与本项目无关的 `bsp/drivers/services/app/ui` 嵌入式应用层目录。
+本项目是纯 C 算法库，继续按 `测频`、`测幅`、`测相` 和 `backend` 进行领域分层。每个算法目录直接保存配套 `.c/.h`，公共仿真与回归测试集中在 `test/`；不引入与本项目无关的 `bsp/drivers/services/app/ui` 嵌入式应用层目录。
 
 ## 使用方式
 

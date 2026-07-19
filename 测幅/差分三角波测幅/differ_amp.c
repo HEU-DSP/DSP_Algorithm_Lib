@@ -1,6 +1,6 @@
 /**
  * @file differ_amp.c
- * @brief Differential triangle-wave amplitude implementation.
+ * @brief 基于差分法的三角波幅度测量实现。
  */
 
 #include "differ_amp.h"
@@ -18,7 +18,7 @@ uint16_t idx_up[1023], idx_down[1023];
 
 
 
-// Sort differential magnitudes in ascending order without recursion.
+// 使用非递归方式将差分幅值按升序排列。
 void quick_sort_large(float32_t* arr, uint32_t length) {
 
     typedef struct {
@@ -86,7 +86,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 //		idx_down[i]=0;
 //
 //	}
-	// Remove the input DC offset before computing differences.
+	// 计算差分前先去除输入信号的直流偏置。
 	for(i=0;i<Length;i++)
 	{
 		average+=AD_value[i];
@@ -100,7 +100,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 
 		median_differ = 0;
 
-	// Compute adjacent-sample differences and their magnitudes.
+	// 计算相邻样本之差及其绝对值。
 	for(i=0;i<Length-1;i++)
 	{
 		differ_data[i]=AD_value1[i+1]-AD_value1[i];
@@ -116,11 +116,11 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 		}
 	}
 
-	// Sort magnitudes to derive a robust differential threshold.
+	// 对差分幅值排序，用于得到较稳健的差分阈值。
 	quick_sort_large(abs_differ_data,Length-1);
 
 
-	// Average the upper half of sorted magnitudes.
+	// 对排序后较大的一半差分幅值取平均。
 	for(t=(Length-1)/2;t<Length-1;t++)
 	{
 		median_differ = median_differ + abs_differ_data[t];
@@ -128,7 +128,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
 	median_differ = median_differ/(Length/2);
 
 
-	// Locate candidate extrema in the differential waveform.
+	// 在差分波形中定位候选极值点。
 	for ( j = 1; j < Length-2 ; j++)
 	{
         if ((differ_data[j] < median_differ/2 && differ_data[j]>0 )||(differ_data[j]>-median_differ/2 && differ_data[j]<0))
@@ -149,7 +149,7 @@ float Differ_Tri_Amp(uint16_t Length, uint16_t *AD_value)
         }
     }
 
-		// Accumulate amplitude contributions from detected extrema.
+		// 累加已检测极值点对应的幅度贡献。
 	for(k=0;k<cnt_up;k++)
 	{
 		Amp = Amp + (median_differ- AD_value1[idx_up[k]] - AD_value1[idx_up[k]+1])/2;

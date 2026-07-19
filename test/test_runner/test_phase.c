@@ -33,7 +33,7 @@ int main(void)
     float phase = CalPhase(SIGNAL_FREQ, SIGNAL_FS, SIGNAL_LENGTH, test_signal_float);
     printf("RESULT:iq_phase:%.6f\n", phase);
 
-    /* Warm up before timing the actual CalPhase calls. */
+    /* 正式计时前先预热 CalPhase 调用。 */
     benchmark_sink += CalPhase(SIGNAL_FREQ, SIGNAL_FS, SIGNAL_LENGTH,
                                test_signal_float);
     begin = clock();
@@ -51,13 +51,13 @@ int main(void)
     /* ---- 2. Harmonic analysis (FFT magnitude spectrum) ---- */
     float32_t xiebo_out[SIGNAL_LENGTH];
     CalXiebo(test_signal_float, xiebo_out, SIGNAL_LENGTH);
-    /* Output fundamental bin magnitude */
+    /* 输出基波频点的幅值。 */
     int bin = (int)(SIGNAL_FREQ / (SIGNAL_FS / SIGNAL_LENGTH) + 0.5f);
     if (bin >= 0 && bin < SIGNAL_LENGTH) {
         printf("RESULT:xiebo_fundamental:%.6f\n", xiebo_out[bin]);
     }
 
-    /* Warm up before timing the actual CalXiebo calls. */
+    /* 正式计时前先预热 CalXiebo 调用。 */
     CalXiebo(test_signal_float, xiebo_out, SIGNAL_LENGTH);
     benchmark_sink += xiebo_out[0];
     begin = clock();

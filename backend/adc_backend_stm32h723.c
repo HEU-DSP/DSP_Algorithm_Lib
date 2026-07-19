@@ -1,6 +1,6 @@
 /**
  * @file adc_backend_stm32h723.c
- * @brief STM32H723 16-bit ADC conversion backend with a 3.3 V reference.
+ * @brief STM32H723 的 16 位 ADC 转换后端，参考电压为 3.3 V。
  */
 #include "adc_backend.h"
 

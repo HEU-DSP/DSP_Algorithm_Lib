@@ -1,6 +1,6 @@
 /**
  * @file fft_interp_freq.c
- * @brief FFT peak and log-parabolic interpolation frequency estimator.
+ * @brief 基于 FFT 峰值及对数抛物线插值的频率估计实现。
  */
 
 #include "fft_interp_freq.h"
@@ -18,21 +18,21 @@ float cfft_f32_fre(float32_t fs,uint16_t *AD_Value,uint8_t flag)
 
 	for(i=0; i<MAX_FFT_N; i++)
 	{
-		/* Load ADC samples as the real part of the FFT input. */
+		/* 将 ADC 采样值装入 FFT 输入的实部，虚部置零。 */
 		s[i].real = AD_Value[i];
 		s[i].imag = 0;
 	}
 
-	/* Compute the MAX_FFT_N-point FFT. */
+	/* 计算 MAX_FFT_N 点 FFT。 */
 	cfft(s, MAX_FFT_N);
 
-	/* Convert each complex bin to magnitude. */
+	/* 将每个复数频点转换为幅值。 */
 	for(k=0; k<MAX_FFT_N; k++)
 	{
 		arm_sqrt_f32((float32_t)(s[k].real *s[k].real+ s[k].imag*s[k].imag ), &s[k].real);
 	}
 
-	/* Search positive-frequency bins and skip DC. */
+	/* 跳过直流分量，在正频率区间搜索幅值峰值。 */
 	temp_1 = 2U;
 	for(j=2; j<MAX_FFT_N/2; j++)
 	{
@@ -46,8 +46,7 @@ float cfft_f32_fre(float32_t fs,uint16_t *AD_Value,uint8_t flag)
   if(flag==1)
 	{
 
-	/* Log-parabolic interpolation reduces the large rectangular-window bias
-	   of a quadratic fit to linear magnitudes. */
+	/* 对数抛物线插值可减小矩形窗下直接拟合线性幅值产生的较大偏差。 */
 	const float32_t left = logf(fmaxf(s[temp_1 - 1U].real, 1.0e-12f));
 	const float32_t peak = logf(fmaxf(s[temp_1].real, 1.0e-12f));
 	const float32_t right = logf(fmaxf(s[temp_1 + 1U].real, 1.0e-12f));

@@ -1,6 +1,6 @@
 /**
  * @file test_safety.c
- * @brief Runtime safety regression checks for fixed-size DSP wrappers.
+ * @brief 固定长度 DSP 封装的运行时安全回归检查。
  */
 
 #include <math.h>

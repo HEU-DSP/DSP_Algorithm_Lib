@@ -28,7 +28,7 @@
 
 int main(void)
 {
-    /* CZT refines around SIGNAL_FREQ +/- 100 Hz */
+    /* 在 SIGNAL_FREQ 前后各 100 Hz 范围内进行 CZT 频谱细化。 */
     int f_start = (int)SIGNAL_FREQ - 100;
     int f_end   = (int)SIGNAL_FREQ + 100;
     if (f_start < 0) f_start = 0;
