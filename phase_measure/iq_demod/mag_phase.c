@@ -1,13 +1,16 @@
 /**
  * @file mag_phase.c
- * @brief Legacy amplitude helpers for the I/Q phase module.
+ * @brief I/Q 测相模块附带的旧版幅度测量辅助函数。
  */
 
 #include "mag_phase.h"
 #include <math.h>
 #include <stddef.h>
 
-// RMS-based amplitude helpers for sine, square, and triangle inputs.
+/* 分别针对正弦波、方波和三角波的有效值测幅辅助函数。
+ * 正弦波波形系数 A=2，峰值 = sqrt(2) × RMS。
+ * 方波波形系数 A=1，峰值 = RMS。
+ * 三角波波形系数 A=3，峰值 = sqrt(3) × RMS。 */
 
 float Measuring_Sine_Amplitude(uint16_t length,uint16_t *AD_value)
 {

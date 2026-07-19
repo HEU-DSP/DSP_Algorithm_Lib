@@ -1,6 +1,6 @@
 /**
  * @file flat_top_data.c
- * @brief Flat-top-window FFT amplitude implementation and coefficients.
+ * @brief 平顶窗 FFT 测幅实现及窗函数系数。
  */
 
 #include "flat_top_data.h"
@@ -12,6 +12,8 @@
 #define Length 4096
 
 
+/* 4096 点平顶窗（Flattop window）系数，旁瓣衰减约 -93 dB。
+ * 加窗后可获得最佳的 FFT 幅值精度，适用于需要精确幅度测量的场合。 */
 const float32_t flattop_window[Length] = {
 -0.0004210510000000, -0.0004211114671812, -0.0004212928714176, -0.0004215952207885, -0.0004220185287584,
 -0.0004225628141774, -0.0004232281012798, -0.0004240144196838, -0.0004249218043897, -0.0004259502957796,

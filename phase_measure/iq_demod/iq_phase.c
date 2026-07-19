@@ -1,6 +1,6 @@
 /**
  * @file iq_phase.c
- * @brief I/Q demodulation phase measurement implementation.
+ * @brief 基于 I/Q 解调的相位测量实现。
  */
 
 #include "iq_phase.h"
@@ -11,6 +11,7 @@
 
 void Create_data2handle(float32_t *p)
 {
+    /* 将 SAMPLE_N 个实数样本按实部-虚部交错排列，构造复数 FFT 输入缓冲区。 */
     for(int i = 0;i < SAMPLE_N; i++)
     {
         data2handle[2 * i]     = p[i];
@@ -24,13 +25,16 @@ void CalXiebo(float32_t *input, float32_t *output, int n)
         return;
     }
 
+    /* 将实数输入复制为实部-虚部交错格式，供 CMSIS-DSP FFT 使用。 */
     float32_t temp[2 * SAMPLE_N];
     for(int i = 0; i < n; i++)
     {
         temp[2 * i]     = input[i];
         temp[2 * i + 1] = 0;
     }
+    /* 调用 CMSIS-DSP 的 1024 点 CFFT 计算频谱。 */
     arm_cfft_f32(&arm_cfft_sR_f32_len1024, temp, 0, 1);
+    /* 将复数频谱转换为幅度谱并输出。 */
     arm_cmplx_mag_f32(temp, output, n);
 }
 
@@ -96,7 +100,7 @@ float CalPhase(float f, float fs, int N, float32_t *adc_float)
         (centered_ys * centered_cc - centered_yc * centered_cs) /
         determinant;
 
-    /* For x(t)=A*sin(wt+phase), the fitted cosine coefficient is
-       A*sin(phase) and the sine coefficient is A*cos(phase). */
+    /* 对 x(t)=A*sin(wt+phase)，拟合得到的余弦系数为 A*sin(phase)，
+       正弦系数为 A*cos(phase)，因此按此顺序传入 atan2。 */
     return (float)atan2(cosine_coefficient, sine_coefficient);
 }

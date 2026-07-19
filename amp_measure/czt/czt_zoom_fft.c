@@ -1,6 +1,6 @@
 /**
  * @file czt_zoom_fft.c
- * @brief Chirp Z-transform spectrum refinement implementation.
+ * @brief Chirp Z 变换频谱细化实现。
  */
 
 #include "czt_zoom_fft.h"
@@ -16,14 +16,14 @@
 
 
 
-__attribute__((aligned(32))) static float gn_fft[2*P];  // CZT-modulated input sequence and FFT workspace.
-__attribute__((aligned(32))) static float hn_fft[2*P];  // Chirp convolution kernel and FFT workspace.
+__attribute__((aligned(32))) static float gn_fft[2*P];  /* CZT 调制后的输入序列及 FFT 工作缓冲区。 */
+__attribute__((aligned(32))) static float hn_fft[2*P];  /* 啁啾卷积核及 FFT 工作缓冲区。 */
 
 void czt_Init_0(float32_t *input, int FS,
         int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 
- // Form a CZT over the requested angular-frequency interval.
+    // 在指定角频率区间内构造 CZT。
 
 
     arm_cfft_radix2_instance_f32 scfft;
@@ -33,45 +33,45 @@ void czt_Init_0(float32_t *input, int FS,
     const float APhase = wStart;
     const float WPhase = -Deltaw;
 
-    // Modulate and zero-pad the input chirp sequence g[n].
+    // 对输入啁啾序列 g[n] 调制并补零。
     for(int k = 0; k < P; k++) {
         const int idx = 2 * k;
         if(k < N) {
             const float angle = WPhase * (k * k) * 0.5f - k * APhase;
-            gn_fft[idx] = input[k] * arm_cos_f32(angle);    // Real part of g[n].
-            gn_fft[idx+1] = input[k] * arm_sin_f32(angle);  // Imaginary part of g[n].
+            gn_fft[idx] = input[k] * arm_cos_f32(angle);    /* g[n] 的实部。 */
+            gn_fft[idx+1] = input[k] * arm_sin_f32(angle);  /* g[n] 的虚部。 */
         } else {
             gn_fft[idx] = 0.0f;
             gn_fft[idx+1] = 0.0f;
         }
     }
 
-    // Build the chirp convolution kernel h[n] with zero padding.
+    // 构造啁啾卷积核 h[n]，其余位置补零。
     int Count = P - M + 1;
     for(int k = 0; k < P; k++) {
         const int idx = 2 * k;
         if(k < N) {
             const float angle = WPhase * k * k * 0.5f;
-            hn_fft[idx] = arm_cos_f32(angle);    // Real part of h[n].
-            hn_fft[idx+1] = -arm_sin_f32(angle); // Imaginary part of h[n].
+            hn_fft[idx] = arm_cos_f32(angle);    /* h[n] 的实部。 */
+            hn_fft[idx+1] = -arm_sin_f32(angle); /* h[n] 的虚部。 */
         } else if(k <= (N + 2*(P-M-N))) {
             hn_fft[idx] = 0.0f;
             hn_fft[idx+1] = 0.0f;
         } else {
             const int n = P - Count;
             const float angle = WPhase * n * n * 0.5f;
-            hn_fft[idx] = arm_cos_f32(angle);    // Real part of wrapped h[n].
-            hn_fft[idx+1] = -arm_sin_f32(angle); // Imaginary part of wrapped h[n].
+            hn_fft[idx] = arm_cos_f32(angle);    /* 折叠段 h[n] 的实部。 */
+            hn_fft[idx+1] = -arm_sin_f32(angle); /* 折叠段 h[n] 的虚部。 */
             Count++;
         }
     }
 
-    // Transform both sequences for frequency-domain convolution.
+    // 对两个序列执行 FFT，以便在频域完成卷积。
     arm_cfft_radix2_init_f32(&scfft, P, 0, 1);
     arm_cfft_radix2_f32(&scfft, gn_fft);
     arm_cfft_radix2_f32(&scfft, hn_fft);
 
-    // Multiply the two complex spectra bin by bin.
+    // 将两个复数频谱逐点相乘。
     for(int k = 0; k < P; k++) {
         const int idx = 2 * k;
         const float real1 = gn_fft[idx];
@@ -79,16 +79,16 @@ void czt_Init_0(float32_t *input, int FS,
         const float real2 = hn_fft[idx];
         const float imag2 = hn_fft[idx+1];
 
-        // (a + bi)(c + di) = (ac - bd) + (ad + bc)i.
-        gn_fft[idx] = real1 * real2 - imag1 * imag2;   // Real product component.
-        gn_fft[idx+1] = real1 * imag2 + imag1 * real2; // Imaginary product component.
+        // 复数乘法：(a + bi)(c + di) = (ac - bd) + (ad + bc)i。
+        gn_fft[idx] = real1 * real2 - imag1 * imag2;   /* 乘积实部。 */
+        gn_fft[idx+1] = real1 * imag2 + imag1 * real2; /* 乘积虚部。 */
     }
 
-    // Inverse-transform the convolution result.
+    // 对卷积结果执行逆变换。
     arm_cfft_radix2_init_f32(&scfft, P, 1, 1);
     arm_cfft_radix2_f32(&scfft, gn_fft);
 
-    // Export magnitudes of the M CZT samples.
+    // 输出 M 个 CZT 采样点的幅值。
 
     for(int k = 0; k < M; k++) {
         const int idx = 2 * k;
@@ -103,7 +103,7 @@ void czt_Init_0(float32_t *input, int FS,
 /********************************************************************************/
 
 
-/* Return the frequency corresponding to the largest CZT magnitude. */
+/* 返回 CZT 最大幅值频点对应的频率。 */
 float czt_result_fre(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 	int idx=0;
@@ -126,7 +126,7 @@ float czt_result_fre(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 
 
 
-/* Return the amplitude estimate at the largest CZT magnitude. */
+/* 返回 CZT 最大幅值频点对应的幅度估计值。 */
 float czt_Amp(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 	int idx=0;
@@ -145,7 +145,7 @@ float czt_Amp(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 }
 
 
-/* Return the complex phase at the largest CZT magnitude. */
+/* 返回 CZT 最大幅值频点对应的复数相位。 */
 float czt_Phase(int FS, int f_start, int f_end,float32_t *zoom_abs/*P*/)
 {
 	int idx=0;
