@@ -1,6 +1,6 @@
-/*
- * ADC Backend — STM32F407
- *   12-bit ADC (0~4095), VREF = 3.3V
+/**
+ * @file adc_backend_stm32f407.c
+ * @brief STM32F407 的 12 位 ADC 转换后端，参考电压为 3.3 V。
  */
 #include "adc_backend.h"
 

@@ -1,0 +1,565 @@
+"""Generate deterministic signals, build C runners, and validate their output."""
+
+import argparse
+from datetime import datetime, timezone
+import json
+import math
+import os
+import shutil
+import subprocess
+import sys
+
+import numpy as np
+
+from resource_metrics import collect_resource_metrics, parse_benchmark_line
+from signal_generator import FIR_COEFFICIENTS, generate_signal, write_signal_header
+
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+GENERATED_DIR = os.path.join(PROJECT_ROOT, 'test', 'generated')
+DEFAULT_BUILD_DIR = os.path.join(PROJECT_ROOT, 'build')
+DEFAULT_SEED = 20260717
+
+MODULES = {
+    'frequency': {'target': 'test_frequency', 'samples': 8192, 'freq': 1000.0},
+    'fft_core': {'target': 'test_fft_core', 'samples': 8192, 'freq': 1000.0},
+    'amplitude': {'target': 'test_amplitude', 'samples': 4096, 'freq': 1000.0},
+    'mag_phase': {'target': 'test_mag_phase', 'samples': 4096, 'freq': 1000.0},
+    'phase': {'target': 'test_phase', 'samples': 1024, 'freq': 50.0},
+    'czt': {'target': 'test_czt', 'samples': 2048, 'freq': 1000.3},
+    'fir': {'target': 'test_fir_response', 'samples': 1024, 'freq': 1000.0},
+    'safety': {'target': 'test_safety', 'samples': 1024, 'freq': 50.0},
+}
+
+RESOURCE_BASELINE_CASES = {
+    'frequency': 'integer_bin',
+    'fft_core': 'integer_bin',
+    'amplitude': 'sine_1v',
+    'mag_phase': 'sine_1v',
+    'phase': 'phase_+0deg',
+    'czt': 'freq_1000p3_amp_0p7',
+    'fir': 'fir_convolution',
+    'safety': 'fixed_size_wrappers',
+}
+
+RESOURCE_BENCHMARK_ALGORITHMS = {
+    'frequency': {'fft_interp', 'fft_peak', 'zero_cross_freq', 'zero_cross_period'},
+    'fft_core': {'fft_core'},
+    'amplitude': {'rms_sine', 'rms_square', 'rms_triangle'},
+    'mag_phase': {'mag_phase_sine', 'mag_phase_square', 'mag_phase_triangle'},
+    'phase': {'iq_phase', 'xiebo_fundamental'},
+    'czt': {'czt_zoom'},
+    'fir': {'fir_filter'},
+    'safety': {'safety_wrappers'},
+}
+
+
+def value_or_default(value, default):
+    return default if value is None else value
+
+
+def circular_abs_error(actual, expected):
+    return abs((actual - expected + math.pi) % (2.0 * math.pi) - math.pi)
+
+
+def resolve_cmake_command(build_dir, override=None):
+    if override:
+        return override
+    discovered = shutil.which('cmake')
+    if discovered:
+        return discovered
+    cache_path = os.path.join(build_dir, 'CMakeCache.txt')
+    if os.path.isfile(cache_path):
+        with open(cache_path, 'r', encoding='utf-8', errors='replace') as stream:
+            for line in stream:
+                if line.startswith('CMAKE_COMMAND:INTERNAL='):
+                    return line.split('=', 1)[1].strip()
+    raise FileNotFoundError(
+        'CMake not found. Pass --cmake, add it to PATH, or configure the build directory once.'
+    )
+
+
+def describe_cmake(cmake):
+    completed = subprocess.run([cmake, '--version'], capture_output=True, text=True)
+    if completed.returncode == 0 and completed.stdout.strip():
+        return completed.stdout.splitlines()[0]
+    return os.path.basename(cmake)
+
+
+def compiler_from_cmake_cache(build_dir):
+    cache_path = os.path.join(build_dir, 'CMakeCache.txt')
+    if not os.path.isfile(cache_path):
+        raise FileNotFoundError(f'CMake cache not found: {cache_path}')
+    with open(cache_path, 'r', encoding='utf-8', errors='replace') as stream:
+        for line in stream:
+            if line.startswith('CMAKE_C_COMPILER:'):
+                compiler = line.split('=', 1)[1].strip()
+                if not compiler:
+                    raise ValueError('CMake cache has an empty CMAKE_C_COMPILER')
+                if not os.path.isfile(compiler):
+                    raise FileNotFoundError(
+                        f'CMake cache compiler does not exist: {compiler}'
+                    )
+                return compiler
+    raise ValueError(f'CMAKE_C_COMPILER is missing from: {cache_path}')
+
+
+def describe_configured_compiler(build_dir):
+    compiler = compiler_from_cmake_cache(build_dir)
+    completed = subprocess.run([compiler, '--version'], capture_output=True, text=True)
+    if completed.returncode or not completed.stdout.strip():
+        raise RuntimeError(f'Unable to describe configured compiler: {compiler}')
+    return completed.stdout.splitlines()[0]
+
+
+def make_error_result(module, case_id, error):
+    return {
+        'module': module, 'case_id': case_id, 'label': 'module_execution',
+        'expected': None, 'actual': None, 'abs_error': None, 'rel_error': None,
+        'status': 'ERROR', 'tolerance': None, 'message': str(error),
+    }
+
+
+def has_failures(results):
+    return any(item.get('status') != 'PASS' for item in results)
+
+
+def evaluate_check(module, case_id, label, expected, actual, check):
+    if actual is None:
+        return {
+            'module': module, 'case_id': case_id, 'label': label,
+            'expected': expected, 'actual': None, 'abs_error': None,
+            'rel_error': None, 'status': 'NO_RESULT',
+            'tolerance': check.get('description', str(check['tolerance'])),
+        }
+
+    kind = check['kind']
+    if kind == 'phase':
+        abs_error = circular_abs_error(actual, expected)
+        rel_error = None
+        passed = abs_error <= check['tolerance']
+    elif kind == 'positive_finite':
+        abs_error = None
+        rel_error = None
+        passed = math.isfinite(actual) and actual > 0.0
+    else:
+        abs_error = abs(actual - expected)
+        rel_error = abs_error / abs(expected) if abs(expected) > 1e-12 else abs_error
+        passed = (abs_error <= check['tolerance'] if kind == 'absolute'
+                  else rel_error <= check['tolerance'])
+    return {
+        'module': module, 'case_id': case_id, 'label': label,
+        'expected': expected, 'actual': actual, 'abs_error': abs_error,
+        'rel_error': rel_error, 'status': 'PASS' if passed else 'FAIL',
+        'tolerance': check.get('description', str(check['tolerance'])),
+    }
+
+
+def _case(case_id, waveform='sine', freq=1000.0, amplitude=1.0, phase=0.0,
+          samples=8192, fs=51200.0, noise=0.0, adc_bits=0, seed=DEFAULT_SEED,
+          phase_only=False):
+    return dict(case_id=case_id, waveform=waveform, freq=freq, amplitude=amplitude,
+                phase=phase, samples=samples, fs=fs, noise=noise,
+                adc_bits=adc_bits, seed=seed, phase_only=phase_only)
+
+
+def _seed_cases(cases, seed):
+    return [dict(case, seed=seed) for case in cases]
+
+
+def suite_cases(module, suite, seed=DEFAULT_SEED):
+    if module == 'frequency':
+        full = [
+            _case('integer_bin', freq=1000.0, samples=8192, adc_bits=12),
+            _case('non_integer_bin', freq=1003.7, samples=8192, adc_bits=12),
+            _case('with_noise', freq=997.3, samples=8192, noise=0.02, adc_bits=12),
+            _case('quantized_non_integer', freq=1234.5, samples=8192, adc_bits=12),
+        ]
+        return _seed_cases(full if suite == 'full' else full[1:2], seed)
+    if module == 'fft_core':
+        full = [
+            _case('integer_bin', freq=1000.0, samples=8192),
+            _case('second_integer_bin', freq=1250.0, amplitude=0.7,
+                  samples=8192),
+        ]
+        return _seed_cases(full if suite == 'full' else full[:1], seed)
+    if module == 'amplitude':
+        full = [
+            _case('sine_1v', waveform='sine', freq=1000.0, samples=4096, adc_bits=12),
+            _case('square_0p8v', waveform='square', freq=800.0, amplitude=0.8,
+                  samples=4096, adc_bits=12),
+            _case('triangle_1p2v', waveform='triangle', freq=800.0, amplitude=1.2,
+                  samples=4096, adc_bits=12),
+        ]
+        return _seed_cases(full, seed)
+    if module == 'mag_phase':
+        full = [
+            _case('sine_1v', waveform='sine', freq=1000.0, samples=4096, adc_bits=12),
+            _case('square_0p8v', waveform='square', freq=1000.0, amplitude=0.8,
+                  samples=4096, adc_bits=12),
+            _case('triangle_1p2v', waveform='triangle', freq=1000.0, amplitude=1.2,
+                  samples=4096, adc_bits=12),
+        ]
+        return _seed_cases(full if suite == 'full' else full[:1], seed)
+    if module == 'phase':
+        degrees = [-170, -90, -30, 0, 45, 90, 170]
+        full = [
+            _case(f'phase_{degree:+d}deg', freq=50.0, phase=math.radians(degree),
+                  samples=1024)
+            for degree in degrees
+        ]
+        full.append(_case('phase_45deg_noise', freq=50.0, phase=math.pi / 4,
+                          samples=1024, noise=0.01))
+        full.extend([
+            _case('phase_noncoherent_+80deg', freq=712.20777,
+                  phase=math.radians(80.0), samples=1024, phase_only=True),
+            _case('phase_noncoherent_-120deg_noise', freq=137.4,
+                  phase=math.radians(-120.0), samples=1024, noise=0.01,
+                  phase_only=True),
+        ])
+        return _seed_cases(full if suite == 'full' else [full[3], full[4]], seed)
+    if module == 'czt':
+        full = [
+            _case('freq_1000p3_amp_0p7', freq=1000.3, amplitude=0.7, phase=0.2,
+                  samples=2048),
+            _case('freq_1234p6_amp_1p2', freq=1234.6, amplitude=1.2, phase=-0.4,
+                  samples=2048),
+        ]
+        return _seed_cases(full if suite == 'full' else full[:1], seed)
+    if module == 'safety':
+        return _seed_cases([_case('fixed_size_wrappers', samples=1024)], seed)
+    if module == 'fir':
+        return _seed_cases([
+            _case('fir_convolution', samples=1024),
+            _case('fir_impulse', waveform='impulse', samples=1024),
+        ], seed)
+    raise ValueError(f'Unknown module: {module}')
+
+
+def custom_case(module, args):
+    config = MODULES[module]
+    waveform = 'sine' if module in ('frequency', 'fft_core', 'phase', 'czt', 'fir', 'safety') else args.waveform
+    adc_bits = args.adc_bits
+    if module in ('frequency', 'amplitude', 'mag_phase') and adc_bits == 0:
+        adc_bits = 12
+    return _case(
+        'custom', waveform=waveform,
+        freq=value_or_default(args.freq, config['freq']), amplitude=args.amp,
+        phase=value_or_default(args.phase, 0.0),
+        samples=value_or_default(args.samples, config['samples']),
+        fs=args.fs, noise=args.noise, adc_bits=adc_bits, seed=args.seed,
+    )
+
+
+def expected_checks(module, case):
+    freq = case['freq']
+    if module == 'frequency':
+        fft_bin = case['fs'] / case['samples']
+        return {
+            'fft_interp': (freq, {'kind': 'relative', 'tolerance': 0.001,
+                                  'description': 'relative error <= 0.1%'}),
+            'fft_peak': (freq, {'kind': 'absolute', 'tolerance': fft_bin / 2 + 1e-6,
+                                'description': 'absolute error <= half FFT bin'}),
+            'zero_cross_freq': (freq, {'kind': 'relative', 'tolerance': 0.001,
+                                       'description': 'relative error <= 0.1%'}),
+            'zero_cross_period': (1.0 / freq, {'kind': 'relative', 'tolerance': 0.001,
+                                               'description': 'relative error <= 0.1%'}),
+        }
+    if module == 'amplitude':
+        labels = {'sine': 'rms_sine', 'square': 'rms_square', 'triangle': 'rms_triangle'}
+        return {labels[case['waveform']]: (
+            case['amplitude'], {'kind': 'relative', 'tolerance': 0.005,
+                                'description': 'relative error <= 0.5%'})}
+    if module == 'mag_phase':
+        labels = {
+            'sine': 'mag_phase_sine',
+            'square': 'mag_phase_square',
+            'triangle': 'mag_phase_triangle',
+        }
+        return {labels[case['waveform']]: (
+            case['amplitude'], {'kind': 'relative', 'tolerance': 0.005,
+                                'description': 'relative error <= 0.5%'})}
+    if module == 'phase':
+        checks = {
+            'iq_phase': (case['phase'], {'kind': 'phase',
+                                         'tolerance': math.radians(0.5),
+                                         'description': 'circular error <= 0.5 degree'}),
+        }
+        if case.get('phase_only'):
+            return checks
+        checks['xiebo_fundamental'] = (
+            case['amplitude'] * case['samples'] / 2.0,
+            {'kind': 'relative', 'tolerance': 0.005,
+             'description': 'relative error <= 0.5%'},
+        )
+        return checks
+    if module == 'czt':
+        start = max(int(freq) - 100, 0)
+        end = int(freq) + 100
+        scan_step = (end - start) / 2047.0
+        return {
+            'czt_freq': (freq, {'kind': 'absolute', 'tolerance': scan_step,
+                                'description': 'absolute error <= one CZT scan step'}),
+            'czt_amp': (case['amplitude'], {'kind': 'relative', 'tolerance': 0.005,
+                                            'description': 'relative error <= 0.5%'}),
+        }
+    if module == 'fft_core':
+        fft_bin = case['fs'] / case['samples']
+        return {
+            'fft_core_freq': (freq, {
+                'kind': 'absolute', 'tolerance': fft_bin / 2.0,
+                'description': 'absolute error <= half FFT bin',
+            }),
+            'fft_core_magnitude': (case['amplitude'] * case['samples'] / 2.0, {
+                'kind': 'relative', 'tolerance': 0.005,
+                'description': 'relative error <= 0.5%',
+            }),
+        }
+    if module == 'safety':
+        return {
+            'iq_invalid_length_unchanged': (
+                1.0, {'kind': 'absolute', 'tolerance': 0.0,
+                      'description': 'invalid length leaves output unchanged'}),
+            'iq_nyquist_rejected': (
+                1.0, {'kind': 'absolute', 'tolerance': 0.0,
+                      'description': 'Nyquist phase input is rejected'}),
+            'fir_zero_max_abs': (
+                0.0, {'kind': 'absolute', 'tolerance': 1.0e-6,
+                      'description': 'zero-input FIR output <= 1e-6'}),
+        }
+    if module == 'fir':
+        return {
+            'fir_max_abs_error': (
+                0.0, {'kind': 'absolute', 'tolerance': 1.0e-5,
+                      'description': 'absolute error <= 1e-5'}),
+            'fir_filter_avg_us': (
+                0.0, {'kind': 'positive_finite', 'tolerance': 0.0,
+                      'description': 'benchmark is finite and positive'}),
+        }
+    raise ValueError(f'Unknown module: {module}')
+
+
+def ensure_configured(cmake, build_dir, args):
+    if os.path.isfile(os.path.join(build_dir, 'CMakeCache.txt')):
+        return
+    command = [cmake, '-S', PROJECT_ROOT, '-B', build_dir]
+    if args.generator:
+        command.extend(['-G', args.generator])
+    if args.c_compiler:
+        command.append(f'-DCMAKE_C_COMPILER={args.c_compiler}')
+    if args.make_program:
+        command.append(f'-DCMAKE_MAKE_PROGRAM={args.make_program}')
+    completed = subprocess.run(command, capture_output=True, text=True)
+    if completed.returncode:
+        raise RuntimeError(f'CMake configure failed:\n{completed.stdout}\n{completed.stderr}')
+
+
+def build_target(cmake, build_dir, target):
+    completed = subprocess.run(
+        [cmake, '--build', build_dir, '--target', target],
+        capture_output=True, text=True,
+    )
+    if completed.returncode:
+        raise RuntimeError(f'Build failed for {target}:\n{completed.stdout}\n{completed.stderr}')
+
+
+def run_executable(build_dir, target):
+    suffix = '.exe' if os.name == 'nt' else ''
+    path = os.path.join(build_dir, 'test', target + suffix)
+    completed = subprocess.run([path], capture_output=True, text=True)
+    if completed.returncode:
+        raise RuntimeError(f'{target} exited with {completed.returncode}:\n{completed.stderr}')
+    measured = {}
+    benchmarks = []
+    for line in completed.stdout.splitlines():
+        if line.startswith('RESULT:'):
+            _, label, value = line.split(':', 2)
+            measured[label.strip()] = float(value.strip())
+        elif line.startswith('BENCH:'):
+            benchmark = parse_benchmark_line(line)
+            benchmarks.append(benchmark)
+            measured[f'{benchmark["algorithm"]}_iterations'] = benchmark['iterations']
+            measured[f'{benchmark["algorithm"]}_avg_us'] = benchmark['average_us']
+            print(line)
+    return measured, benchmarks
+
+
+def validate_benchmark_algorithms(module, benchmarks):
+    expected = RESOURCE_BENCHMARK_ALGORITHMS[module]
+    algorithms = [benchmark['algorithm'] for benchmark in benchmarks]
+    actual = set(algorithms)
+    if len(algorithms) != len(actual):
+        raise ValueError(f'Duplicate BENCH algorithms for {module}: {algorithms}')
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise ValueError(
+            f'Unexpected BENCH algorithms for {module}; missing={missing}, extra={extra}'
+        )
+
+
+def is_resource_baseline(module, case_id, suite):
+    if suite == 'custom':
+        return True
+    baseline_case = RESOURCE_BASELINE_CASES.get(module)
+    if baseline_case is None:
+        return False
+    if case_id == baseline_case:
+        return True
+    return all(
+        case['case_id'] != baseline_case
+        for case in suite_cases(module, suite)
+    )
+
+
+def make_resource_records(target, case, benchmarks, sizes):
+    return [
+        {
+            'target': target,
+            'algorithm': benchmark['algorithm'],
+            'samples': case['samples'],
+            'iterations': benchmark['iterations'],
+            'average_us': benchmark['average_us'],
+            'executable_bytes': sizes['executable_bytes'],
+            'text_bytes': sizes['text_bytes'],
+            'data_bytes': sizes['data_bytes'],
+            'bss_bytes': sizes['bss_bytes'],
+        }
+        for benchmark in benchmarks
+    ]
+
+
+def run_case(module, case, cmake, build_dir, suite):
+    if case['waveform'] == 'impulse':
+        signal = np.zeros(case['samples'], dtype=np.float32)
+        signal[0] = 1.0
+        raw = None
+    else:
+        signal, raw = generate_signal(
+            case['waveform'], case['freq'], case['amplitude'], case['phase'],
+            case['fs'], case['samples'], case['noise'], case['adc_bits'], 3.3,
+            case['seed'],
+        )
+    metadata = {
+        'waveform': case['waveform'], 'freq': case['freq'],
+        'amplitude': case['amplitude'], 'phase': case['phase'],
+        'sample_rate': case['fs'], 'samples': case['samples'],
+        'noise_std': case['noise'], 'adc_bits': case['adc_bits'], 'vref': 3.3,
+    }
+    expected_fir_output = None
+    if module == 'fir':
+        expected_fir_output = np.convolve(
+            signal.astype(np.float64), FIR_COEFFICIENTS, mode='full',
+        )[:len(signal)].astype(np.float32)
+    write_signal_header(
+        signal, raw, GENERATED_DIR, metadata, expected_fir_output=expected_fir_output,
+    )
+    target = MODULES[module]['target']
+    build_target(cmake, build_dir, target)
+    measured, benchmarks = run_executable(build_dir, target)
+    validate_benchmark_algorithms(module, benchmarks)
+    suffix = '.exe' if os.name == 'nt' else ''
+    executable = os.path.join(build_dir, 'test', target + suffix)
+    sizes = collect_resource_metrics(executable)
+
+    results = []
+    for label, (expected, check) in expected_checks(module, case).items():
+        result = evaluate_check(
+            module, case['case_id'], label, expected, measured.get(label), check,
+        )
+        results.append(result)
+        print(f'  [{result["status"]:9s}] {case["case_id"]:24s} {label:22s} '
+              f'expected={expected:.6f} actual={result["actual"]}')
+    resources = (
+        make_resource_records(target, case, benchmarks, sizes)
+        if is_resource_baseline(module, case['case_id'], suite) else []
+    )
+    return results, resources
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='DSP Algorithm Test Orchestrator')
+    parser.add_argument('--module', default='all',
+                        choices=['frequency', 'fft_core', 'amplitude', 'mag_phase', 'phase', 'czt', 'fir', 'safety', 'all'])
+    parser.add_argument('--suite', default='smoke', choices=['smoke', 'full', 'custom'])
+    parser.add_argument('--waveform', default='sine', choices=['sine', 'square', 'triangle'])
+    parser.add_argument('--freq', type=float, default=None)
+    parser.add_argument('--amp', type=float, default=1.0)
+    parser.add_argument('--phase', type=float, default=None)
+    parser.add_argument('--fs', type=float, default=51200.0)
+    parser.add_argument('--samples', type=int, default=None)
+    parser.add_argument('--noise', type=float, default=0.0)
+    parser.add_argument('--adc-bits', type=int, default=0)
+    parser.add_argument('--seed', type=int, default=DEFAULT_SEED)
+    parser.add_argument('--build-dir', default=DEFAULT_BUILD_DIR)
+    parser.add_argument('--cmake', default=None, help='Absolute path to cmake executable')
+    parser.add_argument('--generator', default=None)
+    parser.add_argument('--c-compiler', default=None)
+    parser.add_argument('--make-program', default=None)
+    parser.add_argument('--save-json', default=None)
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    build_dir = os.path.abspath(args.build_dir)
+    cmake = resolve_cmake_command(build_dir, args.cmake)
+    ensure_configured(cmake, build_dir, args)
+    modules = list(MODULES) if args.module == 'all' else [args.module]
+
+    all_results = []
+    all_resources = []
+    for module in modules:
+        cases = ([custom_case(module, args)] if args.suite == 'custom'
+                 else suite_cases(module, args.suite, args.seed))
+        print(f'\n== {module}: {len(cases)} case(s) ==')
+        for case in cases:
+            try:
+                results, resources = run_case(module, case, cmake, build_dir, args.suite)
+                all_results.extend(results)
+                all_resources.extend(resources)
+            except Exception as error:
+                print(f'  [ERROR    ] {case["case_id"]}: {error}')
+                all_results.append(make_error_result(module, case['case_id'], error))
+
+    counts = {status: sum(r['status'] == status for r in all_results)
+              for status in ('PASS', 'FAIL', 'NO_RESULT', 'ERROR')}
+    print(f'\nSummary: {counts["PASS"]} PASS, {counts["FAIL"]} FAIL, '
+          f'{counts["NO_RESULT"]} NO_RESULT, {counts["ERROR"]} ERROR')
+
+    unique_resources = []
+    resource_keys = set()
+    for resource in all_resources:
+        key = (resource['target'], resource['algorithm'], resource['samples'])
+        if key not in resource_keys:
+            resource_keys.add(key)
+            unique_resources.append(resource)
+
+    payload = {
+        'metadata': {
+            'suite': args.suite, 'seed': args.seed,
+            'generated_utc': datetime.now(timezone.utc).isoformat(),
+            'cmake': describe_cmake(cmake),
+            'compiler': describe_configured_compiler(build_dir),
+            'optimization': '-O2',
+            'resource_scope': 'PC/GCC reference; not STM32 target usage',
+            'resource_size_scope': (
+                'Executable and GNU .text/.data/.bss sizes are target-level and '
+                'shared when multiple algorithms use one test executable.'
+            ),
+        },
+        'results': all_results,
+        'resources': unique_resources,
+    }
+    if args.save_json:
+        output = os.path.abspath(args.save_json)
+        os.makedirs(os.path.dirname(output), exist_ok=True)
+        with open(output, 'w', encoding='utf-8') as stream:
+            json.dump(payload, stream, indent=2, ensure_ascii=False)
+        print(f'Results saved to: {output}')
+
+    return 1 if has_failures(all_results) else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

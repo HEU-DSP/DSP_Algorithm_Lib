@@ -1,8 +1,13 @@
+/**
+ * @file zero_cross.c
+ * @brief 基于上升沿过零点的频率与周期测量实现。
+ */
+
 #include "zero_cross.h"
 
 /*
- * Linear interpolation to find the precise zero-crossing point.
- * Between sample[i-1] (negative) and sample[i] (positive):
+ * 使用线性插值求取更精确的过零位置。
+ * 当 sample[i-1] 为负、sample[i] 为正时：
  *   t_cross = (i-1) + |sample[i-1]| / (|sample[i-1]| + |sample[i]|)
  */
 static float interp_zero_cross(float32_t y_prev, float32_t y_curr)
@@ -27,8 +32,9 @@ int ZeroCross_Count(float32_t *input, int n)
 
 float ZeroCross_Period(float32_t *input, int n, float fs)
 {
-    float t1 = -1.0f;
-    float t2 = -1.0f;
+    float first = -1.0f;
+    float last = -1.0f;
+    int count = 0;
 
     for (int i = 1; i < n; i++)
     {
@@ -37,21 +43,16 @@ float ZeroCross_Period(float32_t *input, int n, float fs)
             float frac = interp_zero_cross(input[i - 1], input[i]);
             float t = (float)(i - 1) + frac;
 
-            if (t1 < 0)
-            {
-                t1 = t;
-            }
-            else
-            {
-                t2 = t;
-                break;
-            }
+            if (first < 0.0f) first = t;
+            last = t;
+            count++;
         }
     }
 
-    if (t1 < 0 || t2 < 0) return 0.0f;
+    if (count < 2 || fs <= 0.0f) return 0.0f;
 
-    float period_samples = t2 - t1;
+    /* 对全部完整周期取平均，减小单次过零点受噪声抖动的影响。 */
+    float period_samples = (last - first) / (float)(count - 1);
     return period_samples / fs;
 }
 
